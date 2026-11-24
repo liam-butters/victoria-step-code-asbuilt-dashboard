@@ -49,6 +49,11 @@
   .coverage-note { font-size: 0.82rem; color: var(--fg-muted); background: var(--accent-soft); border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; }
   .coverage-note b { color: var(--fg); }
 
+  .toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; padding: 12px 14px; margin-bottom: 18px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+  .toolbar label { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; color: var(--fg-muted); }
+  .toolbar select { min-width: 160px; font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--fg); }
+  .toolbar .match-note { font-size: 0.76rem; color: var(--fg-muted); flex: 1 1 220px; align-self: center; }
+
   table.compare { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); font-size: 0.86rem; }
   table.compare caption { text-align: left; padding: 10px 14px 0 14px; color: var(--fg-muted); font-size: 0.78rem; caption-side: top; }
   table.compare th, table.compare td { padding: 9px 14px; text-align: right; border-bottom: 1px solid var(--border); }
@@ -86,6 +91,8 @@
   @media (max-width: 460px) {
     table.compare { font-size: 0.78rem; }
     table.compare th, table.compare td { padding: 7px 8px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar select { min-width: 0; width: 100%; }
   }
 </style>
 </head>
@@ -98,6 +105,22 @@
   </header>
 
   <p class="coverage-note" id="coverageNote"></p>
+
+  <div class="toolbar">
+    <label>NRCan year basis
+      <select id="yearModeSelect">
+        <option value="built">Year built</option>
+        <option value="entry">Entry date</option>
+      </select>
+    </label>
+    <label>Statistic
+      <select id="statSelect">
+        <option value="mean">Mean (average)</option>
+        <option value="median">Median</option>
+      </select>
+    </label>
+    <p class="match-note" id="yearMatchNote"></p>
+  </div>
 
   <h2>This spreadsheet vs. the main dashboard, filtered to Victoria</h2>
   <table class="compare" id="compareTable">
@@ -172,6 +195,12 @@
       <li>Only rows with <code>Report Stage = As-Built</code> are included (the handful of Pre-Construction rows have no as-built data to compare).</li>
       <li>A few municipality values in this workbook are typos of "Victoria" (e.g. "Victoira", "Vcitora") and have been normalized. All rows in the file are included in the totals below, including the one Nanaimo and one Saanich row — if they're in this workbook, they're treated as applicable to this area rather than excluded.</li>
     </ul>
+    <h3>Year basis, year-matching and mean/median</h3>
+    <ul>
+      <li>The main NRCan dashboard can assign each home's year two different ways — <b>year built</b> or <b>entry date</b> (when the evaluation was logged) — and the two give meaningfully different year coverage. The <b>"NRCan year basis"</b> dropdown above switches which one the comparison tables, trend charts and category-mix charts all use; it does not change anything about this spreadsheet's own data.</li>
+      <li>The comparison table and the floor-area-normalized table restrict the NRCan baseline to only the years this spreadsheet itself has data for (shown in the note above the comparison table), so the "NRCan dashboard" column is a genuine apples-to-apples time comparison rather than an average across every year NRCan has — which, for a dataset of homes that generally get more efficient over time, would otherwise skew the baseline toward NRCan's earlier, less-efficient years. The year-by-year trend charts below are not restricted this way — they show every year each dataset has, so the two lines can be compared year-by-year directly. The category-mix charts (Step Code achieved, house type) also use the whole NRCan dataset, not just matched years, since those are breakdowns of composition rather than of a metric average.</li>
+      <li>The <b>"Statistic"</b> dropdown switches every average above between the <b>mean</b> and the <b>median</b> of the underlying per-home values, for both this spreadsheet and the NRCan baseline. The one exception is the floor-area-normalized table's size-adjustment fit itself, which is always a mean-based (weighted least-squares) fit — only the NRCan reference value it's compared against follows the toggle.</li>
+    </ul>
   </div>
 
   <footer>
@@ -210,6 +239,7 @@
   function fmt2(n) { return fmtNum(2)(n); }
 
   var DATA = null, BASELINE = null;
+  var state = { yearMode: 'built', stat: 'mean' };
 
   // ---- aggregation over this spreadsheet's (municipality, year) cells ----
   // Every row in the file is included, regardless of its municipality value -
@@ -254,6 +284,114 @@
     return Object.keys(byYear).map(Number).sort(function (a, b) { return a - b; }).map(function (year) {
       var acc = byYear[year], row = { year: year, count: acc.count };
       METRICS.forEach(function (m) { var p = acc.num[m.key]; row[m.key] = p && p[1] ? p[0] / p[1] : null; });
+      return row;
+    });
+  }
+
+  function medianOf(sortedArr) {
+    var n = sortedArr.length;
+    if (!n) return null;
+    var mid = Math.floor(n / 2);
+    return n % 2 ? sortedArr[mid] : (sortedArr[mid - 1] + sortedArr[mid]) / 2;
+  }
+
+  // Same shape as aggregate(cells) ({count, avg, n}) but computed from each
+  // cell's raw per-home values (cell.median) instead of its [sum, count]
+  // pairs - lets renderers treat mean and median interchangeably.
+  function aggregateMedian(cells) {
+    var count = 0;
+    var merged = {}; METRICS.forEach(function (m) { merged[m.key] = []; });
+    cells.forEach(function (c) {
+      count += c.count;
+      METRICS.forEach(function (m) {
+        var arr = c.median && c.median[m.key];
+        if (arr) merged[m.key] = merged[m.key].concat(arr);
+      });
+    });
+    var avg = {}, n = {};
+    METRICS.forEach(function (m) {
+      var arr = merged[m.key].slice().sort(function (a, b) { return a - b; });
+      n[m.key] = arr.length;
+      avg[m.key] = arr.length ? medianOf(arr) : null;
+    });
+    return { count: count, avg: avg, n: n };
+  }
+
+  function yearTrendMedian(cells) {
+    var byYear = {};
+    cells.forEach(function (c) {
+      if (typeof c.year !== 'number') return;
+      var acc = byYear[c.year] || (byYear[c.year] = { count: 0, arr: {} });
+      acc.count += c.count;
+      METRICS.forEach(function (m) {
+        var v = c.median && c.median[m.key];
+        if (!v) return;
+        acc.arr[m.key] = (acc.arr[m.key] || []).concat(v);
+      });
+    });
+    return Object.keys(byYear).map(Number).sort(function (a, b) { return a - b; }).map(function (year) {
+      var acc = byYear[year], row = { year: year, count: acc.count };
+      METRICS.forEach(function (m) {
+        var arr = acc.arr[m.key];
+        row[m.key] = arr && arr.length ? medianOf(arr.slice().sort(function (a, b) { return a - b; })) : null;
+      });
+      return row;
+    });
+  }
+
+  // The distinct years this spreadsheet actually has data for (excluding
+  // "Unknown"), used to match the NRCan baseline to the same year coverage
+  // rather than comparing against every year NRCan has.
+  function sampleYears() {
+    var set = {};
+    DATA.cells.forEach(function (c) { if (typeof c.year === 'number') set[c.year] = true; });
+    return Object.keys(set).map(Number);
+  }
+
+  // Aggregates the NRCan baseline for one year mode, optionally restricted
+  // to a set of years (for the year-matched comparison), as mean or median.
+  function baselineAggregate(mode, matchYears, stat) {
+    var years = BASELINE.year_modes[mode].years.filter(function (y) {
+      return !matchYears || matchYears.indexOf(y.year) !== -1;
+    });
+    var count = 0;
+    var sums = {}, medianArrs = {};
+    METRICS.forEach(function (m) { sums[m.key] = [0, 0]; medianArrs[m.key] = []; });
+    years.forEach(function (y) {
+      count += y.count;
+      METRICS.forEach(function (m) {
+        var v = y.num && y.num[m.key];
+        if (v) { sums[m.key][0] += v[0]; sums[m.key][1] += v[1]; }
+        var med = y.median && y.median[m.key];
+        if (med) medianArrs[m.key] = medianArrs[m.key].concat(med);
+      });
+    });
+    var avg = {}, n = {};
+    METRICS.forEach(function (m) {
+      if (stat === 'median') {
+        var arr = medianArrs[m.key].slice().sort(function (a, b) { return a - b; });
+        n[m.key] = arr.length;
+        avg[m.key] = arr.length ? medianOf(arr) : null;
+      } else {
+        avg[m.key] = sums[m.key][1] ? sums[m.key][0] / sums[m.key][1] : null;
+        n[m.key] = sums[m.key][1];
+      }
+    });
+    return { count: count, avg: avg, n: n, years: years.map(function (y) { return y.year; }) };
+  }
+
+  function baselineYearTrend(mode, stat) {
+    return BASELINE.year_modes[mode].years.map(function (y) {
+      var row = { year: y.year, count: y.count };
+      METRICS.forEach(function (m) {
+        if (stat === 'median') {
+          var arr = y.median && y.median[m.key];
+          row[m.key] = arr && arr.length ? medianOf(arr) : null;
+        } else {
+          var p = y.num && y.num[m.key];
+          row[m.key] = p && p[1] ? p[0] / p[1] : null;
+        }
+      });
       return row;
     });
   }
@@ -455,27 +593,39 @@
   // ---- render ----
 
   function renderCompareTable() {
-    var summary = aggregate(DATA.cells);
+    var matchYears = sampleYears();
+    var summary = state.stat === 'median' ? aggregateMedian(DATA.cells) : aggregate(DATA.cells);
+    var baseline = baselineAggregate(state.yearMode, matchYears, state.stat);
+    var statLabel = state.stat === 'median' ? 'Median' : 'Average';
+    var modeLabel = state.yearMode === 'entry' ? 'entry date' : 'year built';
+
     var caption = document.getElementById('compareCaption');
-    caption.textContent = 'This spreadsheet: ' + summary.count + ' homes. NRCan dashboard: ' + BASELINE.count + ' homes in Victoria.';
+    caption.textContent = 'This spreadsheet: ' + summary.count + ' homes. NRCan dashboard: ' + baseline.count + ' homes in Victoria (' + modeLabel + ', matched years).';
     var coverage = document.getElementById('coverageNote');
     if (coverage) {
-      var pct = BASELINE.count ? (summary.count / BASELINE.count) * 100 : null;
+      var pct = baseline.count ? (summary.count / baseline.count) * 100 : null;
       coverage.innerHTML = pct != null
-        ? 'This spreadsheet\'s <b>' + summary.count + ' homes</b> are <b>' + pct.toFixed(1) + '%</b> of the size of the main NRCan-based dashboard\'s Victoria sample (<b>' + BASELINE.count + ' homes</b>).'
+        ? 'This spreadsheet\'s <b>' + summary.count + ' homes</b> are <b>' + pct.toFixed(1) + '%</b> of the size of the main NRCan-based dashboard\'s year-matched Victoria sample (<b>' + baseline.count + ' homes</b>).'
         : '';
+    }
+    var matchNote = document.getElementById('yearMatchNote');
+    if (matchNote) {
+      var sortedYears = baseline.years.slice().sort(function (a, b) { return a - b; });
+      matchNote.textContent = sortedYears.length
+        ? 'NRCan ' + statLabel.toLowerCase() + ' uses only NRCan Victoria homes from ' + sortedYears.join(', ') + ' (' + modeLabel + ') — the years this spreadsheet covers.'
+        : 'No overlapping years found between this spreadsheet and the NRCan dataset (' + modeLabel + ').';
     }
 
     var body = document.getElementById('compareBody');
     body.innerHTML = '';
     METRICS.forEach(function (m) {
-      var a = summary.avg[m.key], b = BASELINE.avg[m.key];
+      var a = summary.avg[m.key], b = baseline.avg[m.key];
       var diff = (a != null && b != null && b !== 0) ? ((a - b) / Math.abs(b)) * 100 : null;
       var tr = document.createElement('tr');
       tr.innerHTML =
-        '<td>' + m.label + ' <span class="unit">(' + m.unit + ')</span></td>' +
+        '<td>' + m.label.replace('Avg.', statLabel) + ' <span class="unit">(' + m.unit + ')</span></td>' +
         '<td>' + m.fmt(a) + ' <span class="n">(n=' + (summary.n[m.key] || 0) + ')</span></td>' +
-        '<td>' + m.fmt(b) + ' <span class="n">(n=' + (BASELINE.n[m.key] || 0) + ')</span></td>' +
+        '<td>' + m.fmt(b) + ' <span class="n">(n=' + (baseline.n[m.key] || 0) + ')</span></td>' +
         '<td>' + (diff == null ? '—' : (diff > 0 ? '+' : '') + diff.toFixed(0) + '%') + '</td>';
       body.appendChild(tr);
     });
@@ -487,7 +637,9 @@
 
   function renderNormTable() {
     var fit = DATA.size_fit || {};
-    var refArea = BASELINE.avg.floor_area;
+    var matchYears = sampleYears();
+    var baseline = baselineAggregate(state.yearMode, matchYears, state.stat);
+    var refArea = baseline.avg.floor_area;
     var note = document.getElementById('normNote');
     var body = document.getElementById('normBody');
     if (!body) return;
@@ -498,7 +650,9 @@
     }
     var summary = aggregate(DATA.cells);
     if (note) {
-      note.textContent = 'Adjusted to the main dashboard\'s average floor area for Victoria (' + fmt0(refArea) + ' m²) - this spreadsheet\'s own average floor area is ' + fmt0(summary.avg.floor_area) + ' m².';
+      note.textContent = 'Adjusted to the main dashboard\'s year-matched ' + (state.stat === 'median' ? 'median' : 'average') +
+        ' floor area for Victoria (' + fmt0(refArea) + ' m²) - this spreadsheet\'s own average floor area is ' + fmt0(summary.avg.floor_area) +
+        ' m². The size-adjustment fit itself is always based on this spreadsheet\'s mean (it\'s a weighted least-squares fit, which estimates a mean, not a median).';
     }
     NORM_METRIC_KEYS.forEach(function (key) {
       var m = METRICS.filter(function (mm) { return mm.key === key; })[0];
@@ -506,14 +660,14 @@
       var raw = summary.avg[key];
       var f = fit[key];
       var adjusted = f ? (f.a + f.b / refArea) : null;
-      var baseline = BASELINE.avg[key];
-      var diff = (adjusted != null && baseline != null && baseline !== 0) ? ((adjusted - baseline) / Math.abs(baseline)) * 100 : null;
+      var baseVal = baseline.avg[key];
+      var diff = (adjusted != null && baseVal != null && baseVal !== 0) ? ((adjusted - baseVal) / Math.abs(baseVal)) * 100 : null;
       var tr = document.createElement('tr');
       tr.innerHTML =
         '<td>' + m.label + ' <span class="unit">(' + m.unit + ')</span></td>' +
         '<td>' + m.fmt(raw) + '</td>' +
         '<td>' + (adjusted == null ? '—' : m.fmt(adjusted) + ' <span class="n">(fit n=' + (f.n || 0) + ')</span>') + '</td>' +
-        '<td>' + m.fmt(baseline) + '</td>' +
+        '<td>' + m.fmt(baseVal) + '</td>' +
         '<td>' + (diff == null ? '—' : (diff > 0 ? '+' : '') + diff.toFixed(0) + '%') + '</td>';
       body.appendChild(tr);
     });
@@ -521,8 +675,8 @@
 
   function renderCharts() {
     var summary = aggregate(DATA.cells);
-    var trendA = yearTrend(DATA.cells);
-    var trendB = BASELINE.years;
+    var trendA = state.stat === 'median' ? yearTrendMedian(DATA.cells) : yearTrend(DATA.cells);
+    var trendB = baselineYearTrend(state.yearMode, state.stat);
     var years = Array.from(new Set(trendA.map(function (d) { return d.year; }).concat(trendB.map(function (d) { return d.year; })))).sort(function (a, b) { return a - b; });
 
     var el;
@@ -532,14 +686,15 @@
     el = document.getElementById('chartAch'); if (el) drawGroupedByYearBars(el, years, trendA, trendB, { key: 'ach', valueFmt: fmt2, unit: 'ACH50' });
     el = document.getElementById('chartGhgIntensity'); if (el) drawGroupedByYearBars(el, years, trendA, trendB, { key: 'ghg_intensity', valueFmt: fmt1, unit: 'kg CO2e/m²/yr' });
 
+    var baseCat = BASELINE.year_modes[state.yearMode].cat;
     var stepA = catBreakdown(summary.cats.step_achieved, 'numeric');
-    var stepB = catBreakdown(BASELINE.cat.step_achieved, 'numeric');
+    var stepB = catBreakdown(baseCat.step_achieved, 'numeric');
     var stepKeys = Array.from(new Set(stepA.segs.map(function (s) { return s.category; }).concat(stepB.segs.map(function (s) { return s.category; }))))
       .sort(function (a, b) { return (parseFloat(a) || -1) - (parseFloat(b) || -1); });
     el = document.getElementById('chartStepAchieved'); if (el) drawStacked100ByDataset(el, stepA, stepB, { catKeys: stepKeys, labelFn: stepLabel, label: 'Step achieved' });
 
     var houseA = catBreakdown(summary.cats.house_type_group);
-    var houseB = catBreakdown(BASELINE.cat.building_type);
+    var houseB = catBreakdown(baseCat.building_type);
     var houseKeys = Array.from(new Set(houseA.segs.map(function (s) { return s.category; }).concat(houseB.segs.map(function (s) { return s.category; }))));
     el = document.getElementById('chartHouseType'); if (el) drawStacked100ByDataset(el, houseA, houseB, { catKeys: houseKeys, label: 'House type' });
 
@@ -604,10 +759,21 @@
   ]).then(function (results) {
     DATA = results[0];
     BASELINE = results[1];
+    state.yearMode = BASELINE.year_mode_default || 'built';
+    var yearModeSelect = document.getElementById('yearModeSelect');
+    var statSelect = document.getElementById('statSelect');
+    if (yearModeSelect) {
+      yearModeSelect.value = state.yearMode;
+      yearModeSelect.addEventListener('change', function () { state.yearMode = yearModeSelect.value; renderAll(); });
+    }
+    if (statSelect) {
+      statSelect.value = state.stat;
+      statSelect.addEventListener('change', function () { state.stat = statSelect.value; renderAll(); });
+    }
     var genDate = DATA.generated_at ? DATA.generated_at.slice(0, 10) : 'unknown date';
     var baseDate = BASELINE.generated_at ? BASELINE.generated_at.slice(0, 10) : 'unknown date';
     document.getElementById('subtitle').textContent =
-      fmt0(aggregate(DATA.cells).count) + ' as-built homes from "' + DATA.source_file + '" compared against ' + BASELINE.count + ' Victoria homes in the main NRCan-based dashboard.';
+      fmt0(aggregate(DATA.cells).count) + ' as-built homes from "' + DATA.source_file + '" compared against the main NRCan-based dashboard\'s Victoria homes, matched to the same years.';
     document.getElementById('metaNote').textContent =
       'This spreadsheet extracted ' + genDate + '. Main dashboard data (' + (BASELINE.source_file || 'NRCan workbook') + ') baseline computed ' + baseDate + '.';
     document.getElementById('footerSource').textContent = DATA.source_file;

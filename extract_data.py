@@ -306,6 +306,7 @@ def main():
             'year': year_key,
             'count': 0,
             'num': {},
+            'median': {},
             'cat': {'step_achieved': {}, 'house_type_group': {}, 'building_type': {}},
         })
         # 'count' and every metric are weighted by Dwelling Units, to match
@@ -315,10 +316,16 @@ def main():
         # correct per-home average); every other metric is already a
         # per-home value, so both its sum and denominator are weighted.
         cell['count'] += units
+        unit_repeats = max(1, round(units))
         for key, v in num.items():
             pair = cell['num'].setdefault(key, [0.0, 0])
-            pair[0] += v if key in BLOCK_TOTAL_KEYS else v * units
+            per_home_v = v / units if key in BLOCK_TOTAL_KEYS else v
+            pair[0] += per_home_v * units
             pair[1] += units
+            # Raw per-home values (not just the sum), so the dashboard can
+            # offer a median alongside the mean - each of this row's `units`
+            # identical homes gets its own entry.
+            cell['median'].setdefault(key, []).extend([per_home_v] * unit_repeats)
         for cat_key, value in (('step_achieved', step_achieved), ('house_type_group', house_type_group), ('building_type', building_type)):
             hist = cell['cat'][cat_key]
             hist[value] = hist.get(value, 0) + units
@@ -329,6 +336,10 @@ def main():
 
     size_fit = solve_fit(fit_acc)
     print('Size-adjustment fit (intensity = a + b/floor_area):', size_fit)
+
+    for cell in cells.values():
+        for key in cell['median']:
+            cell['median'][key].sort()
 
     out = {
         'generated_at': datetime.datetime.now().isoformat(timespec='seconds'),
