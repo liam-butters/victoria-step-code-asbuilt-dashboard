@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Victoria As-Built Step Code Data</title>
+<meta name="description" content="As-built BC Energy Step Code data for Victoria, compared against the main NRCan-based dashboard filtered to Victoria.">
+<style>
+  :root {
+    --bg: #fbfbfa;
+    --panel: #ffffff;
+    --fg: #1b1f23;
+    --fg-muted: #6b7280;
+    --border: #e3e3e6;
+    --accent: #2f7d6b;
+    --accent-soft: rgba(47, 125, 107, 0.12);
+    --grid: #ececef;
+    --axis: #9aa1ab;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --panel: #1b1e23;
+      --fg: #e8e9eb;
+      --fg-muted: #9aa1ab;
+      --border: #2b2f36;
+      --accent: #52b095;
+      --accent-soft: rgba(82, 176, 149, 0.16);
+      --grid: #262a30;
+      --axis: #6b7280;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 20px max(16px, env(safe-area-inset-right)) 60px max(16px, env(safe-area-inset-left));
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 1.6rem; font-weight: 650; margin: 0 0 4px 0; letter-spacing: -0.01em; }
+  h2 { font-size: 1.05rem; font-weight: 650; margin: 28px 0 10px 0; }
+  .subtitle { color: var(--fg-muted); margin: 0 0 6px 0; }
+  .meta-note { color: var(--fg-muted); font-size: 0.78rem; margin: 0 0 20px 0; }
+  .meta-note a { color: var(--accent); }
+
+  .filters { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; padding: 14px; margin-bottom: 18px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+  .filters > label { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; color: var(--fg-muted); }
+  .filters select { min-width: 220px; font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--fg); }
+
+  table.compare { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); font-size: 0.86rem; }
+  table.compare caption { text-align: left; padding: 10px 14px 0 14px; color: var(--fg-muted); font-size: 0.78rem; caption-side: top; }
+  table.compare th, table.compare td { padding: 9px 14px; text-align: right; border-bottom: 1px solid var(--border); }
+  table.compare th:first-child, table.compare td:first-child { text-align: left; }
+  table.compare thead th { color: var(--fg-muted); font-weight: 600; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.02em; }
+  table.compare tbody tr:last-child td { border-bottom: none; }
+  table.compare td.unit, table.compare th.unit { color: var(--fg-muted); font-size: 0.74rem; font-weight: 400; }
+  table.compare .n { color: var(--fg-muted); font-size: 0.72rem; }
+
+  .chart-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-bottom: 14px; }
+  .chart-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; box-shadow: var(--shadow); min-width: 0; }
+  .chart-card.wide { grid-column: 1 / -1; }
+  .chart-card h3 { margin: 0 0 10px 0; font-size: 0.92rem; font-weight: 600; }
+  .chart-card p.chart-note { margin: 8px 0 0 0; font-size: 0.76rem; color: var(--fg-muted); }
+  .chart-box { position: relative; min-height: 230px; }
+  .chart-box svg text { font-family: inherit; }
+  .chart-empty { fill: var(--fg-muted); font-size: 0.78rem; }
+
+  .chart-tooltip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--border); box-shadow: 0 2px 10px rgba(0,0,0,0.12); color: var(--fg); font-size: 0.76rem; padding: 4px 8px; border-radius: 6px; opacity: 0; transition: opacity 0.1s; white-space: nowrap; z-index: 5; }
+
+  .legend-note { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.78rem; color: var(--fg-muted); margin: -4px 0 14px 0; }
+  .legend-note span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend-note i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+
+  .notes { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; box-shadow: var(--shadow); font-size: 0.84rem; line-height: 1.55; }
+  .notes h3 { margin: 0 0 8px 0; font-size: 0.86rem; }
+  .notes ul { margin: 6px 0 14px 18px; padding: 0; }
+  .notes li { margin-bottom: 6px; }
+  .notes code { background: var(--grid); padding: 1px 5px; border-radius: 4px; font-size: 0.82em; }
+  .notes p:last-child, .notes ul:last-child { margin-bottom: 0; }
+
+  footer { margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--fg-muted); font-size: 0.78rem; }
+  footer a { color: var(--accent); }
+
+  @media (max-width: 460px) {
+    .filters { flex-direction: column; align-items: stretch; }
+    .filters select { min-width: 0; width: 100%; }
+    table.compare { font-size: 0.78rem; }
+    table.compare th, table.compare td { padding: 7px 8px; }
+  }
+</style>
+</head>
+<body>
+
+  <header>
+    <h1>Victoria As-Built Step Code Data</h1>
+    <p class="subtitle" id="subtitle">Loading…</p>
+    <p class="meta-note" id="metaNote"></p>
+  </header>
+
+  <div class="filters">
+    <label>Municipality (this spreadsheet)
+      <select id="municipalityFilter">
+        <option value="victoria">Victoria only</option>
+        <option value="all">All rows in this file (incl. Saanich, Nanaimo)</option>
+      </select>
+    </label>
+  </div>
+
+  <h2>This spreadsheet vs. the main dashboard, filtered to Victoria</h2>
+  <table class="compare" id="compareTable">
+    <caption id="compareCaption"></caption>
+    <thead>
+      <tr><th>Metric</th><th>This spreadsheet</th><th>NRCan dashboard — Victoria</th><th>Difference</th></tr>
+    </thead>
+    <tbody id="compareBody"></tbody>
+  </table>
+
+  <h2>Trends by year</h2>
+  <div class="legend-note">
+    <span><i style="background:#2f7d6b"></i>This spreadsheet</span>
+    <span><i style="background:#3a6ea5"></i>NRCan dashboard — Victoria</span>
+  </div>
+  <div class="chart-row">
+    <div class="chart-card wide"><h3>Homes per year</h3><div class="chart-box" id="chartCount"></div><p class="chart-note">Counts aren't on the same scale — this file is a small, independently-collected sample; the main dashboard covers far more of Victoria's actual evaluations. Compare shapes, not magnitudes.</p></div>
+  </div>
+  <div class="chart-row">
+    <div class="chart-card"><h3>Avg. MEUI, by year</h3><div class="chart-box" id="chartMeui"></div></div>
+    <div class="chart-card"><h3>Avg. TEDI, by year</h3><div class="chart-box" id="chartTedi"></div></div>
+  </div>
+  <div class="chart-row">
+    <div class="chart-card"><h3>Avg. airtightness (ACH50), by year</h3><div class="chart-box" id="chartAch"></div></div>
+    <div class="chart-card"><h3>Avg. GHG intensity, by year</h3><div class="chart-box" id="chartGhgIntensity"></div></div>
+  </div>
+
+  <h2>Category mix</h2>
+  <div class="chart-row">
+    <div class="chart-card"><h3>Overall Step Code achieved</h3><div class="chart-box" id="chartStepAchieved"></div></div>
+    <div class="chart-card"><h3>House vs. multi-unit building</h3><div class="chart-box" id="chartHouseType"></div></div>
+  </div>
+  <div class="chart-row">
+    <div class="chart-card wide"><h3>Building type (this spreadsheet only)</h3><div class="chart-box" id="chartBuildingType"></div><p class="chart-note">No equivalent breakdown exists in the main dashboard at this level of detail.</p></div>
+  </div>
+
+  <h2>Methodology &amp; caveats</h2>
+  <div class="notes">
+    <p>This dashboard extracts <code>step_code_reports.xlsx</code> (an independently-collected set of as-built BC Energy Step Code reports for Victoria) and compares it against the main <a href="https://liam-butters.github.io/bc-energy-step-code-dashboard/">BC Energy Step Code Dashboard</a> (built from the NRCan evaluation database), filtered to city = Victoria. The goal is to check whether the NRCan-based dashboard, filtered to Victoria, gives a representative view of this separately-sourced data.</p>
+    <h3>Column mapping</h3>
+    <ul>
+      <li><b>MEUI / TEDI / airtightness (ACH50) / NLA / NLR</b> — taken directly from this workbook's <code>MEUI As-Built</code>, <code>TEDI As-Built</code>, <code>ACH@50Pa As-Built</code>, <code>NLA@10Pa As-Built</code> and <code>NLR As-Built</code> columns (same quantities, same units as the main dashboard).</li>
+      <li><b>Floor area</b> — this workbook's <code>Conditioned Floor Area (m2)</code>, compared against the main dashboard's <code>HEATEDFLOORAREA</code>. The two aren't guaranteed to be defined identically, though they're normally close.</li>
+      <li><b>GHGs / GHG intensity</b> — this workbook has no raw "GHGs" column; the closest as-built proxy is its Zero Carbon framework's <code>ZC Total GHG Result</code> (and that total divided by floor area, mirroring how the main dashboard derives GHG intensity). Two rows had an implausible <code>ZC Total GHG Result</code> (11.2M and 16.8M kg CO2e/yr — three orders of magnitude above the next-highest real value, and both for homes with no Zero Carbon compliance path pursued) and were excluded as data errors rather than averaged in.</li>
+      <li><b>Design heat loss per floor area</b> — this workbook has no raw design heat loss (W) column; <code>F PTL As-Built (W/m2)</code> (Peak Thermal Load) is used as the closest already-floor-area-normalized proxy. There's no cooling-load equivalent in this workbook at all.</li>
+      <li><b>Overall step achieved</b> — this workbook's <code>Step As-Built</code>, compared against the main dashboard's <code>Step Achieved</code>.</li>
+      <li><b>House vs. multi-unit building</b> — this workbook's granular <code>Building Type</code> values are grouped into "House" vs. "Multi-unit: whole building" (any type containing "MURB") to match the main dashboard's own two-bucket convention.</li>
+    </ul>
+    <h3>No equivalent available</h3>
+    <ul>
+      <li>MEUI/TEDI % improvement over the CSA F280 reference house — this workbook has no reference-house baseline column at all (it reports Required / Proposed / As-Built, not a Reference tier), so this can't be derived here.</li>
+      <li>Envelope RSI (ceiling, wall, foundation), heating/cooling system type and fuel, climate zone, and cooling design load have no columns in this workbook.</li>
+    </ul>
+    <h3>Other caveats</h3>
+    <ul>
+      <li>Sample sizes are very different (roughly 130–140 homes here vs. ~740 in the main dashboard's Victoria slice) — this file's averages are far more sensitive to any single project.</li>
+      <li>Only rows with <code>Report Stage = As-Built</code> are included (the handful of Pre-Construction rows have no as-built data to compare).</li>
+      <li>A few municipality values in this workbook are typos of "Victoria" (e.g. "Victoira", "Vcitora") and have been normalized; one row is Nanaimo and one is Saanich — excluded by the "Victoria only" filter above (default).</li>
+    </ul>
+  </div>
+
+  <footer>
+    Built from <code id="footerSource">step_code_reports.xlsx</code> (as-built step code reports) and the main dashboard's <code id="footerBaselineSource">data.json</code>, aggregated — no individual addresses or identifying details.
+  </footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var COLOR_THIS = '#2f7d6b';
+  var COLOR_BASE = '#3a6ea5';
+  var COLORS = ['#2f7d6b', '#c76b4a', '#3a6ea5', '#9b6bb5', '#b58a2f', '#4a9bb0', '#a65d6b'];
+
+  var METRICS = [
+    { key: 'meui', label: 'Avg. MEUI', unit: 'kWh/m²/yr', fmt: fmt1 },
+    { key: 'tedi', label: 'Avg. TEDI', unit: 'kWh/m²/yr', fmt: fmt1 },
+    { key: 'ach', label: 'Avg. airtightness (ACH50)', unit: 'ACH50', fmt: fmt2 },
+    { key: 'nla', label: 'Avg. NLA', unit: 'NLA', fmt: fmt2 },
+    { key: 'nlr', label: 'Avg. NLR', unit: 'NLR', fmt: fmt2 },
+    { key: 'floor_area', label: 'Avg. floor area', unit: 'm²', fmt: fmt0 },
+    { key: 'ghg', label: 'Avg. GHGs', unit: 'kg CO2e/yr', fmt: fmt0 },
+    { key: 'ghg_intensity', label: 'Avg. GHG intensity', unit: 'kg CO2e/m²/yr', fmt: fmt1 },
+    { key: 'design_heat_loss_per_area', label: 'Avg. design heat loss per area', unit: 'W/m²', fmt: fmt1 }
+  ];
+
+  function fmtNum(decimals) {
+    return function (n) {
+      if (n == null || isNaN(n)) return '—';
+      return n.toLocaleString(undefined, { maximumFractionDigits: decimals, minimumFractionDigits: 0 });
+    };
+  }
+  function fmt0(n) { return fmtNum(0)(n); }
+  function fmt1(n) { return fmtNum(1)(n); }
+  function fmt2(n) { return fmtNum(2)(n); }
+
+  var DATA = null, BASELINE = null;
+  var state = { municipality: 'victoria' };
+
+  // ---- aggregation over this spreadsheet's (municipality, year) cells ----
+
+  function filteredCells() {
+    if (!DATA) return [];
+    if (state.municipality === 'victoria') return DATA.cells.filter(function (c) { return c.municipality === 'Victoria'; });
+    return DATA.cells;
+  }
+
+  function aggregate(cells) {
+    var count = 0;
+    var sums = {}; METRICS.forEach(function (m) { sums[m.key] = [0, 0]; });
+    var cats = { step_achieved: {}, house_type_group: {}, building_type: {} };
+    cells.forEach(function (c) {
+      count += c.count;
+      METRICS.forEach(function (m) {
+        var v = c.num[m.key];
+        if (v) { sums[m.key][0] += v[0]; sums[m.key][1] += v[1]; }
+      });
+      Object.keys(cats).forEach(function (ck) {
+        var hist = c.cat[ck];
+        if (!hist) return;
+        Object.keys(hist).forEach(function (k) { cats[ck][k] = (cats[ck][k] || 0) + hist[k]; });
+      });
+    });
+    var avg = {};
+    METRICS.forEach(function (m) { avg[m.key] = sums[m.key][1] ? sums[m.key][0] / sums[m.key][1] : null; });
+    var n = {};
+    METRICS.forEach(function (m) { n[m.key] = sums[m.key][1]; });
+    return { count: count, avg: avg, n: n, cats: cats };
+  }
+
+  function yearTrend(cells) {
+    var byYear = {};
+    cells.forEach(function (c) {
+      if (typeof c.year !== 'number') return;
+      var acc = byYear[c.year] || (byYear[c.year] = { count: 0, num: {} });
+      acc.count += c.count;
+      METRICS.forEach(function (m) {
+        var v = c.num[m.key];
+        if (!v) return;
+        var pair = acc.num[m.key] || (acc.num[m.key] = [0, 0]);
+        pair[0] += v[0]; pair[1] += v[1];
+      });
+    });
+    return Object.keys(byYear).map(Number).sort(function (a, b) { return a - b; }).map(function (year) {
+      var acc = byYear[year], row = { year: year, count: acc.count };
+      METRICS.forEach(function (m) { var p = acc.num[m.key]; row[m.key] = p && p[1] ? p[0] / p[1] : null; });
+      return row;
+    });
+  }
+
+  // ---- drawing helpers ----
+
+  var tooltipEl;
+  function ensureTooltip() {
+    if (!tooltipEl) { tooltipEl = document.createElement('div'); tooltipEl.className = 'chart-tooltip'; tooltipEl.hidden = true; }
+    return tooltipEl;
+  }
+  function showTooltip(container, html, px, py) {
+    var tip = ensureTooltip();
+    tip.innerHTML = html; tip.hidden = false; tip.style.opacity = '1';
+    if (tip.parentElement !== container) {
+      if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
+      container.appendChild(tip);
+    }
+    var rect = container.getBoundingClientRect();
+    tip.style.left = Math.max(0, px - rect.left + 8) + 'px';
+    tip.style.top = Math.max(0, py - rect.top - 28) + 'px';
+  }
+  function hideTooltip() { if (tooltipEl) tooltipEl.style.opacity = '0'; }
+
+  function emptyState(svg, width, height, message) {
+    svg.append('text').attr('class', 'chart-empty').attr('x', width / 2).attr('y', height / 2)
+      .attr('text-anchor', 'middle').text(message || 'No data for this selection');
+  }
+
+  function ensureSvg(el, width, height, label) {
+    var svg = d3.select(el).select('svg');
+    if (svg.empty()) svg = d3.select(el).append('svg').attr('role', 'img');
+    svg.attr('width', width).attr('height', height).attr('viewBox', '0 0 ' + width + ' ' + height).attr('aria-label', label || 'Chart');
+    svg.selectAll('*').remove();
+    return svg;
+  }
+
+  // Grouped bars: two series (this spreadsheet vs. NRCan-Victoria) per year.
+  function drawGroupedByYearBars(el, years, aRows, bRows, opts) {
+    opts = opts || {};
+    var width = Math.max(el.clientWidth || 320, 260);
+    var height = 240;
+    var margin = { top: 20, right: 12, bottom: 28, left: 46 };
+    var svg = ensureSvg(el, width, height, opts.label);
+    var byYearA = {}; aRows.forEach(function (d) { byYearA[d.year] = d; });
+    var byYearB = {}; bRows.forEach(function (d) { byYearB[d.year] = d; });
+    var usableYears = years.filter(function (y) {
+      var a = byYearA[y], b = byYearB[y];
+      return (a && a[opts.key] != null) || (b && b[opts.key] != null);
+    });
+    if (!usableYears.length) { emptyState(svg, width, height); return; }
+
+    var x = d3.scaleBand().domain(usableYears.map(String)).range([margin.left, width - margin.right]).padding(0.25);
+    var x2 = d3.scaleBand().domain(['a', 'b']).range([0, x.bandwidth()]).padding(0.12);
+    var vals = [];
+    usableYears.forEach(function (y) {
+      var a = byYearA[y], b = byYearB[y];
+      if (a && a[opts.key] != null) vals.push(a[opts.key]);
+      if (b && b[opts.key] != null) vals.push(b[opts.key]);
+    });
+    var max = d3.max(vals) || 1;
+    var y = d3.scaleLinear().domain([0, max * 1.18]).nice().range([height - margin.bottom, margin.top]);
+    var g = svg.append('g');
+    g.append('g').selectAll('line').data(y.ticks(4)).join('line')
+      .attr('x1', margin.left).attr('x2', width - margin.right)
+      .attr('y1', function (d) { return y(d); }).attr('y2', function (d) { return y(d); }).style('stroke', 'var(--grid)');
+    g.append('g').attr('transform', 'translate(0,' + (height - margin.bottom) + ')')
+      .call(d3.axisBottom(x).tickSize(0))
+      .call(function (gg) { gg.select('.domain').remove(); gg.selectAll('text').style('fill', 'var(--axis)').style('font-size', '0.68rem'); });
+    g.append('g').attr('transform', 'translate(' + margin.left + ',0)')
+      .call(d3.axisLeft(y).ticks(4).tickFormat(opts.valueFmt))
+      .call(function (gg) { gg.select('.domain').remove(); gg.selectAll('line').remove(); gg.selectAll('text').style('fill', 'var(--axis)').style('font-size', '0.74rem'); });
+
+    usableYears.forEach(function (year) {
+      var a = byYearA[year], b = byYearB[year];
+      var gx = x(String(year));
+      [{ s: 'a', d: a, color: COLOR_THIS, label: 'This spreadsheet' }, { s: 'b', d: b, color: COLOR_BASE, label: 'NRCan — Victoria' }].forEach(function (series) {
+        var v = series.d && series.d[opts.key];
+        if (v == null) return;
+        var bx = gx + x2(series.s);
+        var by = y(v);
+        g.append('rect').attr('x', bx).attr('width', x2.bandwidth())
+          .attr('y', by).attr('height', (height - margin.bottom) - by)
+          .attr('rx', 2).style('fill', series.color)
+          .on('mousemove', function (event) {
+            showTooltip(el, '<b>' + series.label + ', ' + year + '</b><br>' + opts.valueFmt(v) + (opts.unit ? ' ' + opts.unit : '') + ' · ' + fmt0(series.d.count) + ' homes', event.clientX, event.clientY);
+          }).on('mouseleave', hideTooltip);
+      });
+    });
+  }
+
+  // Two-bar comparison of a 100%-stacked category breakdown.
+  function drawStacked100ByDataset(el, groupA, groupB, opts) {
+    opts = opts || {};
+    var labelFn = opts.labelFn || function (k) { return k; };
+    var width = Math.max(el.clientWidth || 320, 280);
+    var height = 270;
+    var margin = { top: 38, right: 12, bottom: 34, left: 40 };
+    var svg = ensureSvg(el, width, height, opts.label);
+    var groups = [{ key: 'a', name: 'This spreadsheet (n=' + groupA.total + ')', segs: groupA.segs },
+                  { key: 'b', name: 'NRCan — Victoria (n=' + groupB.total + ')', segs: groupB.segs }];
+    if (!groupA.total && !groupB.total) { emptyState(svg, width, height); return; }
+
+    var x = d3.scaleBand().domain(['a', 'b']).range([margin.left, width - margin.right]).padding(0.35);
+    var y = d3.scaleLinear().domain([0, 100]).range([height - margin.bottom, margin.top]);
+    var catKeys = opts.catKeys;
+    var color = d3.scaleOrdinal().domain(catKeys).range(catKeys.map(function (_, i) { return COLORS[i % COLORS.length]; }));
+
+    var g = svg.append('g');
+    g.append('g').selectAll('line').data([0, 25, 50, 75, 100]).join('line')
+      .attr('x1', margin.left).attr('x2', width - margin.right)
+      .attr('y1', function (d) { return y(d); }).attr('y2', function (d) { return y(d); }).style('stroke', 'var(--grid)');
+    g.append('g').attr('transform', 'translate(0,' + (height - margin.bottom) + ')')
+      .call(d3.axisBottom(x).tickSize(0).tickFormat(function (k) { return groups.find(function (gr) { return gr.key === k; }).name; }))
+      .call(function (gg) { gg.select('.domain').remove(); gg.selectAll('text').style('fill', 'var(--axis)').style('font-size', '0.68rem').call(wrapTick, x.bandwidth()); });
+    g.append('g').attr('transform', 'translate(' + margin.left + ',0)')
+      .call(d3.axisLeft(y).tickValues([0, 50, 100]).tickFormat(function (d) { return d + '%'; }))
+      .call(function (gg) { gg.select('.domain').remove(); gg.selectAll('line').remove(); gg.selectAll('text').style('fill', 'var(--axis)').style('font-size', '0.74rem'); });
+
+    groups.forEach(function (grp) {
+      var gx = x(grp.key);
+      var cum = 0;
+      var byCat = {}; grp.segs.forEach(function (s) { byCat[s.category] = s; });
+      catKeys.forEach(function (cat) {
+        var seg = byCat[cat] || { category: cat, count: 0, pct: 0 };
+        var y0 = cum, y1 = cum + seg.pct;
+        cum = y1;
+        if (!seg.count) return;
+        var rect = g.append('rect').attr('x', gx).attr('width', x.bandwidth())
+          .attr('y', y(y1)).attr('height', Math.max(0, y(y0) - y(y1)))
+          .style('fill', color(cat));
+        rect.on('mousemove', function (event) {
+          showTooltip(el, '<b>' + labelFn(cat) + ', ' + grp.name + '</b><br>' + seg.pct.toFixed(1) + '% (' + fmt0(seg.count) + ' homes)', event.clientX, event.clientY);
+        }).on('mouseleave', hideTooltip);
+        if ((y(y0) - y(y1)) > 15) {
+          g.append('text').attr('x', gx + x.bandwidth() / 2).attr('y', (y(y0) + y(y1)) / 2).attr('dy', '0.32em')
+            .attr('text-anchor', 'middle').style('font-size', '0.66rem').style('fill', '#fff').style('pointer-events', 'none')
+            .text(Math.round(seg.pct) + '%');
+        }
+      });
+    });
+
+    var items = catKeys.map(function (k) {
+      var label = labelFn(k);
+      var probe = svg.append('text').style('font-size', '0.72rem').style('visibility', 'hidden').text(label);
+      var tw = (probe.node().getComputedTextLength ? probe.node().getComputedTextLength() : label.length * 6) + 13 + 16;
+      probe.remove();
+      return { key: k, label: label, width: tw };
+    });
+    var availW = width - margin.left - margin.right;
+    var legendRows = [], row = [], rowW = 0;
+    items.forEach(function (it) {
+      if (row.length && rowW + it.width > availW) { legendRows.push(row); row = []; rowW = 0; }
+      row.push(it); rowW += it.width;
+    });
+    if (row.length) legendRows.push(row);
+    var legend = svg.append('g').attr('transform', 'translate(0,14)');
+    legendRows.forEach(function (rowItems, ri) {
+      var rowWidth = rowItems.reduce(function (a, it) { return a + it.width; }, 0) - 16;
+      var lx = margin.left + Math.max(0, (availW - rowWidth) / 2);
+      rowItems.forEach(function (it) {
+        var grp = legend.append('g').attr('transform', 'translate(' + lx + ',' + (ri * 16) + ')');
+        grp.append('rect').attr('width', 9).attr('height', 9).attr('y', -8).style('fill', color(it.key)).attr('rx', 2);
+        grp.append('text').attr('x', 13).style('fill', 'var(--axis)').style('font-size', '0.72rem').text(it.label);
+        lx += it.width;
+      });
+    });
+  }
+
+  function wrapTick(textSelection, width) {
+    textSelection.each(function () {
+      var text = d3.select(this), words = text.text().split(/\s+/).reverse(), word, line = [], lineNumber = 0, lineHeight = 1.1,
+        y = text.attr('y') || 0, dy = 0;
+      text.text(null);
+      var tspan = text.append('tspan').attr('x', text.attr('x')).attr('y', y).attr('dy', dy + 'em');
+      while ((word = words.pop())) {
+        line.push(word);
+        tspan.text(line.join(' '));
+        if (tspan.node().getComputedTextLength() > width && line.length > 1) {
+          line.pop();
+          tspan.text(line.join(' '));
+          line = [word];
+          tspan = text.append('tspan').attr('x', text.attr('x')).attr('y', y).attr('dy', (++lineNumber * lineHeight + dy) + 'em').text(word);
+        }
+      }
+    });
+  }
+
+  function catBreakdown(cats, order) {
+    var total = Object.keys(cats).reduce(function (a, k) { return a + cats[k]; }, 0);
+    var keys = Object.keys(cats);
+    if (order === 'numeric') keys.sort(function (a, b) { return (parseFloat(a) || 0) - (parseFloat(b) || 0); });
+    else keys.sort(function (a, b) { return cats[b] - cats[a]; });
+    return { total: total, segs: keys.map(function (k) { return { category: k, count: cats[k], pct: total ? 100 * cats[k] / total : 0 }; }) };
+  }
+
+  function stepLabel(k) { return k === '0' || k === 'Unknown' ? (k === 'Unknown' ? 'Unknown' : 'Fail') : 'Step ' + k; }
+
+  // ---- render ----
+
+  function renderCompareTable() {
+    var cells = filteredCells();
+    var summary = aggregate(cells);
+    var caption = document.getElementById('compareCaption');
+    caption.textContent = 'This spreadsheet: ' + summary.count + ' homes' + (state.municipality === 'victoria' ? ' (Victoria only)' : ' (all municipalities in the file)') + '. NRCan dashboard: ' + BASELINE.count + ' homes in Victoria.';
+
+    var body = document.getElementById('compareBody');
+    body.innerHTML = '';
+    METRICS.forEach(function (m) {
+      var a = summary.avg[m.key], b = BASELINE.avg[m.key];
+      var diff = (a != null && b != null && b !== 0) ? ((a - b) / Math.abs(b)) * 100 : null;
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + m.label + ' <span class="unit">(' + m.unit + ')</span></td>' +
+        '<td>' + m.fmt(a) + ' <span class="n">(n=' + (summary.n[m.key] || 0) + ')</span></td>' +
+        '<td>' + m.fmt(b) + ' <span class="n">(n=' + (BASELINE.n[m.key] || 0) + ')</span></td>' +
+        '<td>' + (diff == null ? '—' : (diff > 0 ? '+' : '') + diff.toFixed(0) + '%') + '</td>';
+      body.appendChild(tr);
+    });
+  }
+
+  function renderCharts() {
+    var cells = filteredCells();
+    var summary = aggregate(cells);
+    var trendA = yearTrend(cells);
+    var trendB = BASELINE.years;
+    var years = Array.from(new Set(trendA.map(function (d) { return d.year; }).concat(trendB.map(function (d) { return d.year; })))).sort(function (a, b) { return a - b; });
+
+    var el;
+    el = document.getElementById('chartCount'); if (el) drawGroupedByYearBars(el, years, trendA, trendB, { key: 'count', valueFmt: fmt0, unit: 'homes' });
+    el = document.getElementById('chartMeui'); if (el) drawGroupedByYearBars(el, years, trendA, trendB, { key: 'meui', valueFmt: fmt1, unit: 'kWh/m²/yr' });
+    el = document.getElementById('chartTedi'); if (el) drawGroupedByYearBars(el, years, trendA, trendB, { key: 'tedi', valueFmt: fmt1, unit: 'kWh/m²/yr' });
+    el = document.getElementById('chartAch'); if (el) drawGroupedByYearBars(el, years, trendA, trendB, { key: 'ach', valueFmt: fmt2, unit: 'ACH50' });
+    el = document.getElementById('chartGhgIntensity'); if (el) drawGroupedByYearBars(el, years, trendA, trendB, { key: 'ghg_intensity', valueFmt: fmt1, unit: 'kg CO2e/m²/yr' });
+
+    var stepA = catBreakdown(summary.cats.step_achieved, 'numeric');
+    var stepB = catBreakdown(BASELINE.cat.step_achieved, 'numeric');
+    var stepKeys = Array.from(new Set(stepA.segs.map(function (s) { return s.category; }).concat(stepB.segs.map(function (s) { return s.category; }))))
+      .sort(function (a, b) { return (parseFloat(a) || -1) - (parseFloat(b) || -1); });
+    el = document.getElementById('chartStepAchieved'); if (el) drawStacked100ByDataset(el, stepA, stepB, { catKeys: stepKeys, labelFn: stepLabel, label: 'Step achieved' });
+
+    var houseA = catBreakdown(summary.cats.house_type_group);
+    var houseB = catBreakdown(BASELINE.cat.building_type);
+    var houseKeys = Array.from(new Set(houseA.segs.map(function (s) { return s.category; }).concat(houseB.segs.map(function (s) { return s.category; }))));
+    el = document.getElementById('chartHouseType'); if (el) drawStacked100ByDataset(el, houseA, houseB, { catKeys: houseKeys, label: 'House type' });
+
+    var btBreakdown = catBreakdown(summary.cats.building_type);
+    el = document.getElementById('chartBuildingType'); if (el) drawHBars(el, btBreakdown.segs, { label: 'Building type' });
+  }
+
+  function drawHBars(el, rows, opts) {
+    opts = opts || {};
+    rows = rows.slice().sort(function (a, b) { return b.count - a.count; });
+    var width = Math.max(el.clientWidth || 320, 260);
+    var rowH = 24;
+    var height = Math.max(60, rows.length * rowH + 20);
+    var svg = ensureSvg(el, width, height, opts.label);
+    if (!rows.length) { emptyState(svg, width, height); return; }
+    var labelW = Math.min(width * 0.42, 230);
+    var valueW = 70;
+    var left = labelW + 10;
+    var right = width - valueW - 10;
+    var max = d3.max(rows, function (d) { return d.count; }) || 1;
+    var x = d3.scaleLinear().domain([0, max]).range([0, right - left]);
+    var g = svg.append('g');
+    var rowSel = g.selectAll('g.hbar-row').data(rows).join('g').attr('class', 'hbar-row')
+      .attr('transform', function (d, i) { return 'translate(0,' + (i * rowH + 6) + ')'; });
+    rowSel.append('text').attr('x', labelW).attr('y', rowH / 2).attr('dy', '0.32em').attr('text-anchor', 'end')
+      .style('fill', 'var(--fg)').style('font-size', '0.76rem').text(function (d) { return d.category; })
+      .each(function (d) {
+        var node = this;
+        if (!node.getComputedTextLength) return;
+        var text = d.category;
+        while (node.getComputedTextLength() > labelW && text.length > 1) {
+          text = text.slice(0, -1);
+          node.textContent = text + '…';
+        }
+      });
+    var bars = rowSel.append('rect')
+      .attr('x', left).attr('y', 2).attr('height', rowH - 8)
+      .attr('width', function (d) { return Math.max(1, x(d.count)); })
+      .style('fill', COLOR_THIS).attr('rx', 3);
+    rowSel.append('text').attr('x', function (d) { return left + x(d.count) + 6; }).attr('y', rowH / 2).attr('dy', '0.32em')
+      .style('fill', 'var(--fg-muted)').style('font-size', '0.76rem')
+      .text(function (d) { return fmt0(d.count) + ' (' + d.pct.toFixed(0) + '%)'; });
+    bars.on('mousemove', function (event, d) {
+      showTooltip(el, '<b>' + d.category + '</b><br>' + fmt0(d.count) + ' homes (' + d.pct.toFixed(1) + '%)', event.clientX, event.clientY);
+    }).on('mouseleave', hideTooltip);
+  }
+
+  function renderAll() {
+    if (!DATA || !BASELINE) return;
+    renderCompareTable();
+    renderCharts();
+  }
+
+  document.getElementById('municipalityFilter').addEventListener('change', function () {
+    state.municipality = this.value;
+    renderAll();
+  });
+  window.addEventListener('resize', renderAll);
+
+  // ---- boot ----
+
+  Promise.all([
+    fetch('data.json').then(function (r) { return r.json(); }),
+    fetch('baseline.json').then(function (r) { return r.json(); })
+  ]).then(function (results) {
+    DATA = results[0];
+    BASELINE = results[1];
+    var genDate = DATA.generated_at ? DATA.generated_at.slice(0, 10) : 'unknown date';
+    var baseDate = BASELINE.generated_at ? BASELINE.generated_at.slice(0, 10) : 'unknown date';
+    document.getElementById('subtitle').textContent =
+      DATA.total_rows + ' as-built homes from "' + DATA.source_file + '" compared against ' + BASELINE.count + ' Victoria homes in the main NRCan-based dashboard.';
+    document.getElementById('metaNote').textContent =
+      'This spreadsheet extracted ' + genDate + '. Main dashboard data (' + (BASELINE.source_file || 'NRCan workbook') + ') baseline computed ' + baseDate + '.';
+    document.getElementById('footerSource').textContent = DATA.source_file;
+    document.getElementById('footerBaselineSource').textContent = BASELINE.source_file || 'data.json';
+    renderAll();
+  }).catch(function (err) {
+    document.getElementById('subtitle').textContent = 'Could not load data: ' + err.message;
+  });
+})();
+</script>
+</body>
+</html>
