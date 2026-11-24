@@ -54,16 +54,16 @@ NUMERIC_FIELDS = {
     'F PTL As-Built (W/m2)': 'design_heat_loss_per_area',
 }
 
-GHG_FIELD = 'ZC Total GHG Result'
-# Two rows (out of 131 with a value) have a "ZC Total GHG Result" of 11.2M
-# and 16.8M kg CO2e/yr - three orders of magnitude above the next-highest
-# real value (39,124, a 6-unit MURB) and clearly a data error in the source
-# workbook, not a unit mismatch (dividing by that row's own floor area still
-# gives an absurd per-m2 figure). Both are for homes with no Zero Carbon
-# compliance path pursued ("ZC Level Achieved" blank), so this looks like a
-# formula artifact rather than a real reading - treat values above this
-# ceiling as missing rather than letting them skew the average.
-GHG_PLAUSIBILITY_CEILING = 100000
+# GHGs are *not* taken from "ZC Total GHG Result" - that column is unreliable
+# for reports pulled from the Zero Carbon framework (it has produced values
+# three orders of magnitude too high on some rows; see git history). Instead,
+# GHGs are calculated directly from this workbook's as-built fuel
+# consumption, the same way the underlying compliance reports do it:
+# GHG (kg CO2e/yr) = Electricity (GJ/yr) x ELEC_GHG_FACTOR + Natural Gas (GJ/yr) x GAS_GHG_FACTOR.
+ELEC_FIELD = 'F Electricity As-Built (GJ/yr)'
+GAS_FIELD = 'F Natural Gas As-Built (GJ/yr)'
+ELEC_GHG_FACTOR = 3.06   # kg CO2e per GJ of electricity (BC Hydro grid intensity)
+GAS_GHG_FACTOR = 50      # kg CO2e per GJ of natural gas
 
 MIN_PLAUSIBLE_YEAR = 1990
 MAX_PLAUSIBLE_YEAR = datetime.date.today().year + 1
@@ -103,6 +103,16 @@ def to_float(raw):
         return float(raw)
     except (TypeError, ValueError):
         return None
+
+
+def to_float_fuel(raw):
+    # This workbook's fuel-breakdown ("F ...") columns use "-" for "no
+    # consumption of this fuel", distinct from a genuinely blank/missing row
+    # (where every "F ..." column is blank, meaning the compliance report had
+    # no fuel breakdown at all).
+    if isinstance(raw, str) and raw.strip() == '-':
+        return 0.0
+    return to_float(raw)
 
 
 def normalize_municipality(raw):
@@ -164,7 +174,7 @@ def main():
     col = {name: i for i, name in enumerate(header) if name}
 
     missing = [n for n in [REPORT_STAGE_FIELD, MUNICIPALITY_FIELD, YEAR_FIELD, BUILDING_TYPE_FIELD,
-                            STEP_ACHIEVED_FIELD, GHG_FIELD]
+                            STEP_ACHIEVED_FIELD, ELEC_FIELD, GAS_FIELD]
                + list(NUMERIC_FIELDS) if n not in col]
     if missing:
         raise SystemExit(f'Columns not found in header: {missing}')
@@ -213,12 +223,13 @@ def main():
                 num[key] = fv
 
         floor_area = num.get('floor_area')
-        ghg = to_float(get(GHG_FIELD))
-        if ghg is not None and ghg > GHG_PLAUSIBILITY_CEILING:
-            ghg = None
-        if ghg is not None and floor_area:
-            num['ghg'] = ghg
-            num['ghg_intensity'] = ghg / floor_area
+        elec = to_float_fuel(get(ELEC_FIELD))
+        gas = to_float_fuel(get(GAS_FIELD))
+        if elec is not None or gas is not None:
+            ghg = (elec or 0.0) * ELEC_GHG_FACTOR + (gas or 0.0) * GAS_GHG_FACTOR
+            if floor_area:
+                num['ghg'] = ghg
+                num['ghg_intensity'] = ghg / floor_area
 
         cell = cells.setdefault((municipality, year_key), {
             'municipality': municipality,
