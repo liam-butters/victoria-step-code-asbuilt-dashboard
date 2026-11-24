@@ -116,6 +116,12 @@ NUMERIC_FIELDS = {
     'F PTL As-Built (W/m2)': 'design_heat_loss_per_area',
 }
 
+# These columns use 0 to mean "not measured/not applicable" rather than
+# leaving the cell blank in practice (a real home never has literally zero
+# airtightness, floor area, or energy use) - treat 0 as missing for these keys
+# so it doesn't drag an average/median toward zero.
+ZERO_AS_MISSING = {'meui', 'tedi', 'ach', 'nla', 'nlr', 'floor_area', 'design_heat_loss_per_area'}
+
 # GHGs are *not* taken from "ZC Total GHG Result" - that column is unreliable
 # for reports pulled from the Zero Carbon framework (it has produced values
 # three orders of magnitude too high on some rows; see git history). Instead,
@@ -287,7 +293,7 @@ def main():
         num = {}
         for field, key in NUMERIC_FIELDS.items():
             fv = to_float(get(field))
-            if fv is not None:
+            if fv is not None and not (fv == 0 and key in ZERO_AS_MISSING):
                 num[key] = fv
 
         floor_area = num.get('floor_area')
@@ -295,7 +301,7 @@ def main():
         gas = to_float_fuel(get(GAS_FIELD))
         if elec is not None or gas is not None:
             ghg = (elec or 0.0) * ELEC_GHG_FACTOR + (gas or 0.0) * GAS_GHG_FACTOR
-            if floor_area:
+            if ghg and floor_area:
                 num['ghg'] = ghg
                 num['ghg_intensity'] = ghg / floor_area
 

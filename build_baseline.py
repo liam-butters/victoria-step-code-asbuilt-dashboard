@@ -35,6 +35,19 @@ YEAR_MODES = ('built', 'entry')
 NUMERIC_KEYS = ['meui', 'tedi', 'ach', 'nla', 'nlr', 'floor_area', 'ghg', 'ghg_intensity', 'design_heat_loss_per_area']
 CATEGORY_KEYS = {'step_achieved': 'step_achieved', 'building_type': 'building_type', 'el_achieved': 'el_achieved'}
 
+# The main dashboard's own GHGs is deliberately left as the raw, undivided
+# value it reports (a whole-building total for a multi-unit entry). This
+# dashboard's own GHGs is already on a per-dwelling-unit basis (divided by
+# Dwelling Units - see this repo's own extract_data.py), so for an
+# apples-to-apples comparison this baseline needs the main dashboard's
+# per-dwelling-unit GHGs instead - 'ghg_per_unit', which the main dashboard
+# computes for exactly this purpose but never shows in its own UI.
+MAIN_KEY_OVERRIDES = {'ghg': 'ghg_per_unit'}
+
+
+def main_key(k):
+    return MAIN_KEY_OVERRIDES.get(k, k)
+
 
 def build_mode(data, mode):
     cells = [c for c in data['year_modes'][mode]['cells'] if c['city'] == CITY]
@@ -46,7 +59,7 @@ def build_mode(data, mode):
 
     for cell in cells:
         for k in NUMERIC_KEYS:
-            v = cell['num'].get(k)
+            v = cell['num'].get(main_key(k))
             if v:
                 sums[k][0] += v[0]
                 sums[k][1] += v[1]
@@ -60,7 +73,7 @@ def build_mode(data, mode):
             acc = by_year.setdefault(year, {'count': 0, 'num': {k: [0.0, 0] for k in NUMERIC_KEYS}})
             acc['count'] += cell['count']
             for k in NUMERIC_KEYS:
-                v = cell['num'].get(k)
+                v = cell['num'].get(main_key(k))
                 if v:
                     acc['num'][k][0] += v[0]
                     acc['num'][k][1] += v[1]
@@ -73,9 +86,11 @@ def build_mode(data, mode):
     for year in sorted(by_year):
         acc = by_year[year]
         row = {'year': year, 'count': acc['count'], 'num': acc['num']}
-        median = median_raw.get(f'{CITY}|{year}')
-        if median:
-            row['median'] = median
+        median_src = median_raw.get(f'{CITY}|{year}')
+        if median_src:
+            median = {k: median_src[main_key(k)] for k in NUMERIC_KEYS if main_key(k) in median_src}
+            if median:
+                row['median'] = median
         years_out.append(row)
 
     return {
