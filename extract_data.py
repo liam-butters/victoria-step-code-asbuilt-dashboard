@@ -52,6 +52,55 @@ DWELLING_UNITS_FIELD = 'Dwelling Units'
 # for every identical unit in the block.
 BLOCK_TOTAL_KEYS = {'floor_area', 'ghg'}
 
+# MEUI, TEDI and GHG intensity are all per-floor-area values, so a smaller
+# home shows a higher per-m2 figure than a larger one even with identical
+# underlying performance (building heat loss/use has a floor-area-independent
+# share, diluted less in a smaller home). To make this spreadsheet's average
+# comparable to the main dashboard's despite its very different mix of home
+# sizes, fit intensity = a + b/floor_area per metric (weighted least squares,
+# weighted by Dwelling Units) from this spreadsheet's own homes, then report
+# what that fit predicts at the main dashboard's own average floor area - see
+# build_fit()/solve_fit() and method.html.
+FIT_METRIC_KEYS = ('meui', 'tedi', 'ghg_intensity')
+
+
+def new_fit_accumulator():
+    return {k: [0.0, 0.0, 0.0, 0.0, 0.0, 0] for k in FIT_METRIC_KEYS}
+
+
+def accumulate_fit(acc, num, floor_area, units):
+    if not floor_area:
+        return
+    per_unit_area = floor_area / units
+    x = 1.0 / per_unit_area
+    for key in FIT_METRIC_KEYS:
+        y = num.get(key)
+        if y is None:
+            continue
+        a = acc[key]
+        a[0] += units
+        a[1] += units * x
+        a[2] += units * y
+        a[3] += units * x * x
+        a[4] += units * x * y
+        a[5] += 1
+
+
+def solve_fit(acc):
+    out = {}
+    for key in FIT_METRIC_KEYS:
+        sw, swx, swy, swxx, swxy, n = acc[key]
+        if n < 5 or sw <= 0:
+            continue
+        denom = sw * swxx - swx * swx
+        if abs(denom) < 1e-9:
+            out[key] = {'a': swy / sw, 'b': 0.0, 'n': n}
+        else:
+            b = (sw * swxy - swx * swy) / denom
+            a = (swy - b * swx) / sw
+            out[key] = {'a': a, 'b': b, 'n': n}
+    return out
+
 # Numeric fields taken directly from an "As-Built" column, mapped onto the
 # same metric keys the main NRCan dashboard uses (see method.html).
 NUMERIC_FIELDS = {
@@ -200,6 +249,7 @@ def main():
     total_kept = 0
     skipped_not_as_built = 0
     muni_counts = {}
+    fit_acc = new_fit_accumulator()
 
     for r in rows:
         if r is None or all(v is None for v in r):
@@ -249,6 +299,8 @@ def main():
                 num['ghg'] = ghg
                 num['ghg_intensity'] = ghg / floor_area
 
+        accumulate_fit(fit_acc, num, floor_area, units)
+
         cell = cells.setdefault((municipality, year_key), {
             'municipality': municipality,
             'year': year_key,
@@ -275,11 +327,15 @@ def main():
           f'{total_kept} kept')
     print('Municipalities:', dict(sorted(muni_counts.items(), key=lambda kv: -kv[1])))
 
+    size_fit = solve_fit(fit_acc)
+    print('Size-adjustment fit (intensity = a + b/floor_area):', size_fit)
+
     out = {
         'generated_at': datetime.datetime.now().isoformat(timespec='seconds'),
         'source_file': wb_path.name,
         'total_rows': total_kept,
         'cells': list(cells.values()),
+        'size_fit': size_fit,
     }
     OUT_PATH.write_text(json.dumps(out, separators=(',', ':')), encoding='utf-8')
     print(f'Wrote {OUT_PATH} ({OUT_PATH.stat().st_size / 1000:.1f} KB)')
