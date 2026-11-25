@@ -43,17 +43,20 @@ FLOOR_AREA_FIELD = 'Conditioned Floor Area (m2)'
 # than a single house - see Dwelling Units below.
 DWELLING_UNITS_FIELD = 'Dwelling Units'
 
-# Conditioned Floor Area and GHGs are reported as totals for the whole row
-# (i.e. for all of its Dwelling Units combined), not per-home values - e.g. a
-# 6-unit rowhouse block's floor area is the sum of all 6 units' areas, and
-# its GHGs are the combined total for all 6. Every other metric (MEUI, TEDI,
-# ACH, NLA, NLR, GHG intensity, % improvements) is already a per-home
-# intensity/ratio, since it comes from the single HOT2000 model that stands
-# for every identical unit in the block. GHGs is divided by Dwelling Units
-# unconditionally - same as floor area - so "GHGs" here always means kg
-# CO2e per dwelling unit, per year, matching the main dashboard's own
-# per-dwelling-unit convention (see method.html).
-BLOCK_TOTAL_KEYS = {'floor_area', 'ghg'}
+# Conditioned Floor Area is reported as a total for the whole row (i.e. for
+# all of its Dwelling Units combined), not a per-home value - e.g. a 6-unit
+# rowhouse block's floor area is the sum of all 6 units' areas. Every other
+# per-home metric (MEUI, TEDI, ACH, NLA, NLR, GHG intensity, % improvements)
+# is already a per-home intensity/ratio, since it comes from the single
+# HOT2000 model that stands for every identical unit in the block, so only
+# floor area is divided by Dwelling Units here.
+BLOCK_TOTAL_KEYS = {'floor_area'}
+
+# GHGs is also reported as a whole-row total (e.g. a 6-unit rowhouse block's
+# combined GHGs for all 6 units), but unlike floor area it's kept as that
+# raw total - one data point per row, not divided or weighted by Dwelling
+# Units - matching the main dashboard's own convention (see method.html).
+RAW_TOTAL_KEYS = {'ghg'}
 
 # MEUI, TEDI and GHG intensity are all per-floor-area values, so a smaller
 # home shows a higher per-m2 figure than a larger one even with identical
@@ -371,16 +374,24 @@ def main():
             'median': {},
             'cat': {'step_achieved': {}, 'house_type_group': {}, 'building_type': {}},
         })
-        # 'count' and every metric are weighted by Dwelling Units, to match
-        # the NRCan baseline's convention of counting individual homes. For
-        # the two BLOCK_TOTAL_KEYS, the row's value is already a total across
-        # `units` homes, so only the denominator is weighted (giving the
-        # correct per-home average); every other metric is already a
-        # per-home value, so both its sum and denominator are weighted.
+        # 'count' and every metric except the RAW_TOTAL_KEYS are weighted by
+        # Dwelling Units, to match the NRCan baseline's convention of
+        # counting individual homes. For BLOCK_TOTAL_KEYS, the row's value is
+        # already a total across `units` homes, so only the denominator is
+        # weighted (giving the correct per-home average); every other
+        # per-home metric has both its sum and denominator weighted.
+        # RAW_TOTAL_KEYS (GHGs) is the odd one out: it stays a single,
+        # unweighted data point per row regardless of `units`, matching the
+        # main dashboard's own convention for that metric.
         cell['count'] += units
         unit_repeats = max(1, round(units))
         for key, v in num.items():
             pair = cell['num'].setdefault(key, [0.0, 0])
+            if key in RAW_TOTAL_KEYS:
+                pair[0] += v
+                pair[1] += 1
+                cell['median'].setdefault(key, []).append(v)
+                continue
             per_home_v = v / units if key in BLOCK_TOTAL_KEYS else v
             pair[0] += per_home_v * units
             pair[1] += units
