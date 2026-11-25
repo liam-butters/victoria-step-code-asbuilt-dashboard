@@ -145,7 +145,7 @@
   </div>
   <div class="chart-row">
     <div class="chart-card"><h3>Avg. ACH50, by year</h3><div class="chart-box" id="chartAch"></div></div>
-    <div class="chart-card"><h3>Avg. GHG intensity, by year</h3><div class="chart-box" id="chartGhgIntensity"></div></div>
+    <div class="chart-card"><h3>Avg. GHGs, by year</h3><div class="chart-box" id="chartGhg"></div></div>
   </div>
 
   <h2>Category mix</h2>
@@ -630,7 +630,7 @@
     el = document.getElementById('chartMeui'); if (el) drawGroupedByYearBars(el, years, trendA, trendB, { key: 'meui', valueFmt: fmt1, unit: 'kWh/m²/yr' });
     el = document.getElementById('chartTedi'); if (el) drawGroupedByYearBars(el, years, trendA, trendB, { key: 'tedi', valueFmt: fmt1, unit: 'kWh/m²/yr' });
     el = document.getElementById('chartAch'); if (el) drawGroupedByYearBars(el, years, trendA, trendB, { key: 'ach', valueFmt: fmt2, unit: 'ACH50' });
-    el = document.getElementById('chartGhgIntensity'); if (el) drawGroupedByYearBars(el, years, trendA, trendB, { key: 'ghg_intensity', valueFmt: fmt1, unit: 'kg CO2e/m²/yr' });
+    el = document.getElementById('chartGhg'); if (el) drawGroupedByYearBars(el, years, trendA, trendB, { key: 'ghg', valueFmt: fmt0, unit: 'kg CO2e/yr' });
 
     var baseCat = BASELINE.year_modes[state.yearMode].cat;
     var stepA = catBreakdown(summary.cats.step_achieved, 'numeric');
