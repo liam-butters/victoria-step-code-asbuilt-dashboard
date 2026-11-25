@@ -43,20 +43,14 @@ FLOOR_AREA_FIELD = 'Conditioned Floor Area (m2)'
 # than a single house - see Dwelling Units below.
 DWELLING_UNITS_FIELD = 'Dwelling Units'
 
-# Conditioned Floor Area is reported as a total for the whole row (i.e. for
-# all of its Dwelling Units combined), not a per-home value - e.g. a 6-unit
-# rowhouse block's floor area is the sum of all 6 units' areas. Every other
-# per-home metric (MEUI, TEDI, ACH, NLA, NLR, GHG intensity, % improvements)
-# is already a per-home intensity/ratio, since it comes from the single
-# HOT2000 model that stands for every identical unit in the block, so only
-# floor area is divided by Dwelling Units here.
-BLOCK_TOTAL_KEYS = {'floor_area'}
-
-# GHGs is also reported as a whole-row total (e.g. a 6-unit rowhouse block's
-# combined GHGs for all 6 units), but unlike floor area it's kept as that
-# raw total - one data point per row, not divided or weighted by Dwelling
-# Units - matching the main dashboard's own convention (see method.html).
-RAW_TOTAL_KEYS = {'ghg'}
+# Conditioned Floor Area and GHGs are both reported as a total for the whole
+# row (i.e. for all of its Dwelling Units combined), not a per-home value -
+# e.g. a 6-unit rowhouse block's floor area and GHGs are each the sum across
+# all 6 units. Every other per-home metric (MEUI, TEDI, ACH, NLA, NLR, GHG
+# intensity, % improvements) is already a per-home intensity/ratio, since it
+# comes from the single HOT2000 model that stands for every identical unit
+# in the block, so only these two are divided by Dwelling Units here.
+BLOCK_TOTAL_KEYS = {'floor_area', 'ghg'}
 
 # Numeric fields taken directly from an "As-Built" column, mapped onto the
 # same metric keys the main NRCan dashboard uses (see method.html).
@@ -91,17 +85,6 @@ FLOOR_AREA_PLACEHOLDER = 2
 # average it alone would skew "Avg. NLA" noticeably. Treated as missing,
 # like the placeholders above, rather than guessing at the intended value.
 NLA_PLAUSIBILITY_CEILING = 10
-
-# The main NRCan dashboard's own Victoria/Saanich data tops out at 2 Dwelling
-# Units per row (it has no large apartment/rowhouse blocks at all) - this
-# workbook, by contrast, includes real 4-14 unit MURB/rowhouse buildings.
-# Those are modern and all-electric, so their per-unit GHGs is small, and
-# because every metric is weighted by Dwelling Units, a handful of such rows
-# inject many repeated low values into the comparison (especially the
-# median), well beyond anything the NRCan side's own population could ever
-# produce. Excluded entirely (every metric, not just GHGs) so both sides
-# cover the same building-size range - see method.html.
-MAX_DWELLING_UNITS = 2
 
 # NLR is a much less consistently reported airtightness metric than the
 # others (only ~1 in 7 rows has it) - requiring it alongside everything else
@@ -246,7 +229,6 @@ def main():
     total_in_sheet = 0
     total_kept = 0
     skipped_not_as_built = 0
-    skipped_large_murb = 0
     skipped_incomplete = 0
     muni_counts = {}
 
@@ -279,10 +261,6 @@ def main():
         units = to_float(get(DWELLING_UNITS_FIELD))
         if not units or units < 1:
             units = 1.0
-
-        if units > MAX_DWELLING_UNITS:
-            skipped_large_murb += 1
-            continue
 
         num = {}
         for field, key in NUMERIC_FIELDS.items():
@@ -321,24 +299,16 @@ def main():
             'median': {},
             'cat': {'step_achieved': {}, 'house_type_group': {}, 'building_type': {}},
         })
-        # 'count' and every metric except the RAW_TOTAL_KEYS are weighted by
-        # Dwelling Units, to match the NRCan baseline's convention of
-        # counting individual homes. For BLOCK_TOTAL_KEYS, the row's value is
-        # already a total across `units` homes, so only the denominator is
-        # weighted (giving the correct per-home average); every other
-        # per-home metric has both its sum and denominator weighted.
-        # RAW_TOTAL_KEYS (GHGs) is the odd one out: it stays a single,
-        # unweighted data point per row regardless of `units`, matching the
-        # main dashboard's own convention for that metric.
+        # 'count' and every metric are weighted by Dwelling Units, to match
+        # the NRCan baseline's convention of counting individual homes. For
+        # BLOCK_TOTAL_KEYS, the row's value is already a total across `units`
+        # homes, so it's divided down to a per-home value first (giving the
+        # correct per-home average/median); every other per-home metric is
+        # already a per-home value and is used as-is.
         cell['count'] += units
         unit_repeats = max(1, round(units))
         for key, v in num.items():
             pair = cell['num'].setdefault(key, [0.0, 0])
-            if key in RAW_TOTAL_KEYS:
-                pair[0] += v
-                pair[1] += 1
-                cell['median'].setdefault(key, []).append(v)
-                continue
             per_home_v = v / units if key in BLOCK_TOTAL_KEYS else v
             pair[0] += per_home_v * units
             pair[1] += units
@@ -351,7 +321,6 @@ def main():
             hist[value] = hist.get(value, 0) + units
 
     print(f'{total_in_sheet} data rows in sheet, {skipped_not_as_built} skipped (not "{WANTED_REPORT_STAGE}" report stage), '
-          f'{skipped_large_murb} skipped (> {MAX_DWELLING_UNITS} Dwelling Units), '
           f'{skipped_incomplete} skipped (missing a metric other than NLR), {total_kept} kept')
     print('Municipalities:', dict(sorted(muni_counts.items(), key=lambda kv: -kv[1])))
 
