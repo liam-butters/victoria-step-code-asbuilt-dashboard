@@ -121,6 +121,16 @@ NUMERIC_FIELDS = {
 # so it doesn't drag an average/median toward zero.
 ZERO_AS_MISSING = {'meui', 'tedi', 'ach', 'nla', 'nlr', 'floor_area'}
 
+# Conditioned Floor Area (m2) also has its own distinct placeholder: 22 of
+# this workbook's 134 Victoria as-built rows (across many different
+# addresses and building types, none of them otherwise anywhere near this
+# value) record exactly 2 m2 - physically impossible for a home, clearly a
+# default/placeholder left behind wherever the real floor area couldn't be
+# extracted from the source PDF. Left in, it drags floor area (and the
+# per-1/floor_area size-adjustment fit, which treats it as a real,
+# high-leverage data point) down hard. Treated as missing here, like 0 above.
+FLOOR_AREA_PLACEHOLDER = 2
+
 # GHGs are *not* taken from "ZC Total GHG Result" - that column is unreliable
 # for reports pulled from the Zero Carbon framework (it has produced values
 # three orders of magnitude too high on some rows; see git history). Instead,
@@ -292,8 +302,13 @@ def main():
         num = {}
         for field, key in NUMERIC_FIELDS.items():
             fv = to_float(get(field))
-            if fv is not None and not (fv == 0 and key in ZERO_AS_MISSING):
-                num[key] = fv
+            if fv is None:
+                continue
+            if fv == 0 and key in ZERO_AS_MISSING:
+                continue
+            if key == 'floor_area' and fv == FLOOR_AREA_PLACEHOLDER:
+                continue
+            num[key] = fv
 
         floor_area = num.get('floor_area')
         elec = to_float_fuel(get(ELEC_FIELD))
