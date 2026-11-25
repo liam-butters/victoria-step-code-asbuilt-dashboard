@@ -131,6 +131,14 @@ ZERO_AS_MISSING = {'meui', 'tedi', 'ach', 'nla', 'nlr', 'floor_area'}
 # high-leverage data point) down hard. Treated as missing here, like 0 above.
 FLOOR_AREA_PLACEHOLDER = 2
 
+# NLA@10Pa As-Built has one row (1264/1266 Denman St) recorded as 42.27 -
+# over 13x the next-highest value in the whole workbook (3.16), with every
+# other value clustered under 3. Almost certainly a transcription/decimal
+# error rather than a real reading, and with only ~136 rows feeding the
+# average it alone would skew "Avg. NLA" noticeably. Treated as missing,
+# like the placeholders above, rather than guessing at the intended value.
+NLA_PLAUSIBILITY_CEILING = 10
+
 # GHGs are *not* taken from "ZC Total GHG Result" - that column is unreliable
 # for reports pulled from the Zero Carbon framework (it has produced values
 # three orders of magnitude too high on some rows; see git history). Instead,
@@ -307,6 +315,8 @@ def main():
             if fv == 0 and key in ZERO_AS_MISSING:
                 continue
             if key == 'floor_area' and fv == FLOOR_AREA_PLACEHOLDER:
+                continue
+            if key == 'nla' and fv > NLA_PLAUSIBILITY_CEILING:
                 continue
             num[key] = fv
 
