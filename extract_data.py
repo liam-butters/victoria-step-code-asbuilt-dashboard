@@ -139,6 +139,17 @@ FLOOR_AREA_PLACEHOLDER = 2
 # like the placeholders above, rather than guessing at the intended value.
 NLA_PLAUSIBILITY_CEILING = 10
 
+# The main NRCan dashboard's own Victoria/Saanich data tops out at 2 Dwelling
+# Units per row (it has no large apartment/rowhouse blocks at all) - this
+# workbook, by contrast, includes real 4-14 unit MURB/rowhouse buildings.
+# Those are modern and all-electric, so their per-unit GHGs is small, and
+# because every metric is weighted by Dwelling Units, a handful of such rows
+# inject many repeated low values into the comparison (especially the
+# median), well beyond anything the NRCan side's own population could ever
+# produce. Excluded entirely (every metric, not just GHGs) so both sides
+# cover the same building-size range - see method.html.
+MAX_DWELLING_UNITS = 2
+
 # GHGs are *not* taken from "ZC Total GHG Result" - that column is unreliable
 # for reports pulled from the Zero Carbon framework (it has produced values
 # three orders of magnitude too high on some rows; see git history). Instead,
@@ -271,6 +282,7 @@ def main():
     total_in_sheet = 0
     total_kept = 0
     skipped_not_as_built = 0
+    skipped_large_murb = 0
     muni_counts = {}
     fit_acc = new_fit_accumulator()
 
@@ -303,6 +315,10 @@ def main():
         units = to_float(get(DWELLING_UNITS_FIELD))
         if not units or units < 1:
             units = 1.0
+
+        if units > MAX_DWELLING_UNITS:
+            skipped_large_murb += 1
+            continue
 
         muni_counts[municipality] = muni_counts.get(municipality, 0) + units
         total_kept += 1
@@ -361,7 +377,7 @@ def main():
             hist[value] = hist.get(value, 0) + units
 
     print(f'{total_in_sheet} data rows in sheet, {skipped_not_as_built} skipped (not "{WANTED_REPORT_STAGE}" report stage), '
-          f'{total_kept} kept')
+          f'{skipped_large_murb} skipped (> {MAX_DWELLING_UNITS} Dwelling Units), {total_kept} kept')
     print('Municipalities:', dict(sorted(muni_counts.items(), key=lambda kv: -kv[1])))
 
     size_fit = solve_fit(fit_acc)
