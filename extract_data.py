@@ -43,22 +43,17 @@ FLOOR_AREA_FIELD = 'Conditioned Floor Area (m2)'
 # than a single house - see Dwelling Units below.
 DWELLING_UNITS_FIELD = 'Dwelling Units'
 
-# Conditioned Floor Area is reported as a total for the whole row (i.e. for
-# all of its Dwelling Units combined), not a per-home value - e.g. a 6-unit
-# rowhouse block's floor area is the sum of all 6 units' areas. Every other
-# metric (MEUI, TEDI, ACH, NLA, NLR, GHG intensity, % improvements) is
-# already a per-home intensity/ratio, since it comes from the single HOT2000
-# model that stands for every identical unit in the block. GHGs is handled
-# separately below (GHG_DIVIDE_BUILDING_TYPES), since whether it's a
-# per-building or per-home total depends on the building type.
-BLOCK_TOTAL_KEYS = {'floor_area'}
-
-# GHGs is only divided by Dwelling Units for building types that are
-# genuinely multiple distinct dwelling units sharing one HOT2000 model (a
-# block of row houses, a low-rise MURB, a duplex/semi-detached pair). A
-# detached home with a secondary suite - MURB-coded or not - is still a
-# single building whose GHGs shouldn't be split across its "units".
-GHG_DIVIDE_BUILDING_TYPES = {'Row House (non-MURB)', 'Low-Rise MURB', 'Double/Semi-detached (non-MURB)'}
+# Conditioned Floor Area and GHGs are reported as totals for the whole row
+# (i.e. for all of its Dwelling Units combined), not per-home values - e.g. a
+# 6-unit rowhouse block's floor area is the sum of all 6 units' areas, and
+# its GHGs are the combined total for all 6. Every other metric (MEUI, TEDI,
+# ACH, NLA, NLR, GHG intensity, % improvements) is already a per-home
+# intensity/ratio, since it comes from the single HOT2000 model that stands
+# for every identical unit in the block. GHGs is divided by Dwelling Units
+# unconditionally - same as floor area - so "GHGs" here always means kg
+# CO2e per dwelling unit, per year, matching the main dashboard's own
+# per-dwelling-unit convention (see method.html).
+BLOCK_TOTAL_KEYS = {'floor_area', 'ghg'}
 
 # MEUI, TEDI and GHG intensity are all per-floor-area values, so a smaller
 # home shows a higher per-m2 figure than a larger one even with identical
@@ -321,18 +316,15 @@ def main():
         })
         # 'count' and every metric are weighted by Dwelling Units, to match
         # the NRCan baseline's convention of counting individual homes. For
-        # BLOCK_TOTAL_KEYS (floor_area always, ghg conditionally - see
-        # GHG_DIVIDE_BUILDING_TYPES above), the row's value is already a
-        # total across `units` homes, so only the denominator is weighted
-        # (giving the correct per-home average); every other metric is
-        # already a per-home value, so both its sum and denominator are
-        # weighted.
+        # the two BLOCK_TOTAL_KEYS, the row's value is already a total across
+        # `units` homes, so only the denominator is weighted (giving the
+        # correct per-home average); every other metric is already a
+        # per-home value, so both its sum and denominator are weighted.
         cell['count'] += units
         unit_repeats = max(1, round(units))
         for key, v in num.items():
             pair = cell['num'].setdefault(key, [0.0, 0])
-            divide = key in BLOCK_TOTAL_KEYS or (key == 'ghg' and building_type in GHG_DIVIDE_BUILDING_TYPES)
-            per_home_v = v / units if divide else v
+            per_home_v = v / units if key in BLOCK_TOTAL_KEYS else v
             pair[0] += per_home_v * units
             pair[1] += units
             # Raw per-home values (not just the sum), so the dashboard can
