@@ -131,16 +131,6 @@
     <tbody id="compareBody"></tbody>
   </table>
 
-  <h2>Floor-area-normalized comparison</h2>
-  <p class="meta-note" id="normNote"></p>
-  <table class="compare" id="normTable">
-    <caption>MEUI, TEDI and GHG intensity are all per unit floor area, so a dataset whose homes are smaller on average will show higher intensity even with identical underlying performance - the fixed, non-area-proportional share of a home's heat loss/use is diluted less in a smaller home. This adjusts this spreadsheet's figures to what they'd be at the main dashboard's own average floor area, using a simple size-vs-intensity model fit to this spreadsheet's own homes (see Methodology below). It's an approximate adjustment, not a precise one.</caption>
-    <thead>
-      <tr><th>Metric</th><th>This spreadsheet (raw avg)</th><th>This spreadsheet (size-adjusted)</th><th>NRCan dashboard — Victoria</th><th>Adjusted difference</th></tr>
-    </thead>
-    <tbody id="normBody"></tbody>
-  </table>
-
   <h2>Trends by year</h2>
   <div class="legend-note">
     <span><i style="background:#2f7d6b"></i>This spreadsheet</span>
@@ -180,10 +170,6 @@
       <li><b>Overall step achieved</b> — this workbook's <code>Step As-Built</code>, compared against the main dashboard's <code>Step Achieved</code>.</li>
       <li><b>House vs. multi-unit building</b> — this workbook's granular <code>Building Type</code> values are grouped into "House" vs. "Multi-unit: whole building" (any type containing "MURB") to match the main dashboard's own two-bucket convention.</li>
     </ul>
-    <h3>Floor-area normalization</h3>
-    <ul>
-      <li>MEUI, TEDI and GHG intensity are all expressed per unit floor area, but this spreadsheet's homes average a very different size than the main dashboard's Victoria homes, which can bias a direct comparison of those averages - a smaller home shows higher per-m² intensity than a larger one even with identical underlying performance, because a home's heat loss/use has a floor-area-independent ("fixed") share that's diluted less in a smaller home. The "Floor-area-normalized comparison" table above fits <code>intensity = a + b/floor area</code> per metric (weighted least squares, weighted by Dwelling Units) using this spreadsheet's own homes, then reports what that fit predicts at the main dashboard's own average floor area for Victoria - putting the two datasets on the same size basis before comparing them. This is an approximate, back-of-envelope adjustment: it assumes this spreadsheet's own size/intensity relationship also describes the main dashboard's homes, which can't be verified directly since the main dashboard only publishes aggregated averages, not its own per-home data.</li>
-    </ul>
     <h3>No equivalent available</h3>
     <ul>
       <li>MEUI/TEDI % improvement over the CSA F280 reference house — this workbook has no reference-house baseline column at all (it reports Required / Proposed / As-Built, not a Reference tier), so this can't be derived here.</li>
@@ -198,8 +184,8 @@
     <h3>Year basis, year-matching and mean/median</h3>
     <ul>
       <li>The main NRCan dashboard can assign each home's year two different ways — <b>year built</b> or <b>entry date</b> (when the evaluation was logged) — and the two give meaningfully different year coverage. The <b>"NRCan year basis"</b> dropdown above switches which one the comparison tables, trend charts and category-mix charts all use; it does not change anything about this spreadsheet's own data.</li>
-      <li>The comparison table and the floor-area-normalized table restrict the NRCan baseline to only the years this spreadsheet itself has data for (shown in the note above the comparison table), so the "NRCan dashboard" column is a genuine apples-to-apples time comparison rather than an average across every year NRCan has — which, for a dataset of homes that generally get more efficient over time, would otherwise skew the baseline toward NRCan's earlier, less-efficient years. The year-by-year trend charts below are not restricted this way — they show every year each dataset has, so the two lines can be compared year-by-year directly. The category-mix charts (Step Code achieved, house type) also use the whole NRCan dataset, not just matched years, since those are breakdowns of composition rather than of a metric average.</li>
-      <li>The <b>"Statistic"</b> dropdown switches every average above between the <b>mean</b> and the <b>median</b> of the underlying per-home values, for both this spreadsheet and the NRCan baseline. The one exception is the floor-area-normalized table, which always compares mean to mean regardless of the toggle - its size-adjustment fit is a weighted least-squares fit, which can only ever estimate a mean, so its NRCan reference value is also always a mean (never a median compared against a mean, or vice versa).</li>
+      <li>The comparison table restricts the NRCan baseline to only the years this spreadsheet itself has data for (shown in the note above the comparison table), so the "NRCan dashboard" column is a genuine apples-to-apples time comparison rather than an average across every year NRCan has — which, for a dataset of homes that generally get more efficient over time, would otherwise skew the baseline toward NRCan's earlier, less-efficient years. The year-by-year trend charts below only plot years where <i>both</i> this spreadsheet and the NRCan baseline have data - a year with data on only one side is left out rather than shown with a line that drops to nothing. The category-mix charts (Step Code achieved, house type) still use the whole NRCan dataset, not just matched years, since those are breakdowns of composition rather than of a metric average.</li>
+      <li>The <b>"Statistic"</b> dropdown switches every average above between the <b>mean</b> and the <b>median</b> of the underlying per-home values, for both this spreadsheet and the NRCan baseline.</li>
     </ul>
   </div>
 
@@ -223,8 +209,7 @@
     { key: 'nla', label: 'Avg. NLA', unit: 'NLA', fmt: fmt2 },
     { key: 'nlr', label: 'Avg. NLR', unit: 'NLR', fmt: fmt2 },
     { key: 'ghg', label: 'Avg. GHGs', unit: 'kg CO2e/yr', fmt: fmt0 },
-    { key: 'ghg_intensity', label: 'Avg. GHG intensity', unit: 'kg CO2e/m²/yr', fmt: fmt1 },
-    { key: 'floor_area', label: 'Avg. floor area', unit: 'm²', fmt: fmt0 }
+    { key: 'ghg_intensity', label: 'Avg. GHG intensity', unit: 'kg CO2e/m²/yr', fmt: fmt1 }
   ];
 
   function fmtNum(decimals) {
@@ -630,58 +615,15 @@
     });
   }
 
-  // Metrics with a per-area size-adjustment fit, in the order they're shown
-  // in the normalized table (see extract_data.py's FIT_METRIC_KEYS).
-  var NORM_METRIC_KEYS = ['meui', 'tedi', 'ghg_intensity'];
-
-  function renderNormTable() {
-    var fit = DATA.size_fit || {};
-    var matchYears = sampleYears();
-    // This table's "this spreadsheet" columns are always mean-based (the
-    // size-adjustment fit is a weighted least-squares fit, which estimates a
-    // mean, not a median) - so the NRCan column here must always be mean too,
-    // regardless of the page's mean/median toggle, to never compare a mean
-    // against a median.
-    var baseline = baselineAggregate(state.yearMode, matchYears, 'mean');
-    var refArea = baseline.avg.floor_area;
-    var note = document.getElementById('normNote');
-    var body = document.getElementById('normBody');
-    if (!body) return;
-    body.innerHTML = '';
-    if (refArea == null) {
-      if (note) note.textContent = 'No adjustment available - the main dashboard\'s average floor area is unknown.';
-      return;
-    }
-    var summary = aggregate(DATA.cells);
-    if (note) {
-      note.textContent = 'Adjusted to the main dashboard\'s year-matched average floor area for Victoria (' + fmt0(refArea) +
-        ' m²) - this spreadsheet\'s own average floor area is ' + fmt0(summary.avg.floor_area) +
-        ' m². This table always uses means on both sides (the size-adjustment fit is a weighted least-squares fit, which estimates a mean, not a median), regardless of the Average/Median toggle above.';
-    }
-    NORM_METRIC_KEYS.forEach(function (key) {
-      var m = METRICS.filter(function (mm) { return mm.key === key; })[0];
-      if (!m) return;
-      var raw = summary.avg[key];
-      var f = fit[key];
-      var adjusted = f ? (f.a + f.b / refArea) : null;
-      var baseVal = baseline.avg[key];
-      var diff = (adjusted != null && baseVal != null && baseVal !== 0) ? ((adjusted - baseVal) / Math.abs(baseVal)) * 100 : null;
-      var tr = document.createElement('tr');
-      tr.innerHTML =
-        '<td>' + m.label + ' <span class="unit">(' + m.unit + ')</span></td>' +
-        '<td>' + m.fmt(raw) + '</td>' +
-        '<td>' + (adjusted == null ? '—' : m.fmt(adjusted) + ' <span class="n">(fit n=' + (f.n || 0) + ')</span>') + '</td>' +
-        '<td>' + m.fmt(baseVal) + '</td>' +
-        '<td>' + (diff == null ? '—' : (diff > 0 ? '+' : '') + diff.toFixed(0) + '%') + '</td>';
-      body.appendChild(tr);
-    });
-  }
-
   function renderCharts() {
     var summary = aggregate(DATA.cells);
     var trendA = state.stat === 'median' ? yearTrendMedian(DATA.cells) : yearTrend(DATA.cells);
     var trendB = baselineYearTrend(state.yearMode, state.stat);
-    var years = Array.from(new Set(trendA.map(function (d) { return d.year; }).concat(trendB.map(function (d) { return d.year; })))).sort(function (a, b) { return a - b; });
+    // Only years both this spreadsheet and the NRCan baseline have data for -
+    // a year with data on only one side would otherwise show a line that
+    // drops to nothing, which reads as "zero" rather than "no data".
+    var yearsB = new Set(trendB.map(function (d) { return d.year; }));
+    var years = trendA.map(function (d) { return d.year; }).filter(function (y) { return yearsB.has(y); }).sort(function (a, b) { return a - b; });
 
     var el;
     el = document.getElementById('chartCount'); if (el) drawGroupedByYearBars(el, years, trendA, trendB, { key: 'count', valueFmt: fmt0, unit: 'homes' });
@@ -749,7 +691,6 @@
   function renderAll() {
     if (!DATA || !BASELINE) return;
     renderCompareTable();
-    renderNormTable();
     renderCharts();
   }
 
