@@ -43,14 +43,22 @@ FLOOR_AREA_FIELD = 'Conditioned Floor Area (m2)'
 # than a single house - see Dwelling Units below.
 DWELLING_UNITS_FIELD = 'Dwelling Units'
 
-# Conditioned Floor Area and GHGs are reported as totals for the whole row
-# (i.e. for all of its Dwelling Units combined), not per-home values - e.g. a
-# 6-unit rowhouse block's floor area is the sum of all 6 units' areas, and
-# its GHGs are the combined total for all 6. Every other metric (MEUI, TEDI,
-# ACH, NLA, NLR, GHG intensity, % improvements) is already a per-home
-# intensity/ratio, since it comes from the single HOT2000 model that stands
-# for every identical unit in the block.
-BLOCK_TOTAL_KEYS = {'floor_area', 'ghg'}
+# Conditioned Floor Area is reported as a total for the whole row (i.e. for
+# all of its Dwelling Units combined), not a per-home value - e.g. a 6-unit
+# rowhouse block's floor area is the sum of all 6 units' areas. Every other
+# metric (MEUI, TEDI, ACH, NLA, NLR, GHG intensity, % improvements) is
+# already a per-home intensity/ratio, since it comes from the single HOT2000
+# model that stands for every identical unit in the block. GHGs is handled
+# separately below (GHG_DIVIDE_BUILDING_TYPES), since whether it's a
+# per-building or per-home total depends on the building type.
+BLOCK_TOTAL_KEYS = {'floor_area'}
+
+# GHGs is only divided by Dwelling Units for building types that are
+# genuinely multiple distinct dwelling units sharing one HOT2000 model (a
+# block of row houses, a low-rise MURB, a duplex/semi-detached pair). A
+# detached home with a secondary suite - MURB-coded or not - is still a
+# single building whose GHGs shouldn't be split across its "units".
+GHG_DIVIDE_BUILDING_TYPES = {'Row House (non-MURB)', 'Low-Rise MURB', 'Double/Semi-detached (non-MURB)'}
 
 # MEUI, TEDI and GHG intensity are all per-floor-area values, so a smaller
 # home shows a higher per-m2 figure than a larger one even with identical
@@ -110,17 +118,13 @@ NUMERIC_FIELDS = {
     'NLA@10Pa As-Built': 'nla',
     'NLR As-Built': 'nlr',
     FLOOR_AREA_FIELD: 'floor_area',
-    # Peak Thermal Load (W/m2) is already floor-area-normalized, unlike the
-    # main dashboard's raw EGHDESHTLOSS - this is the closest as-built
-    # equivalent to that dashboard's "design heat loss per floor area".
-    'F PTL As-Built (W/m2)': 'design_heat_loss_per_area',
 }
 
 # These columns use 0 to mean "not measured/not applicable" rather than
 # leaving the cell blank in practice (a real home never has literally zero
 # airtightness, floor area, or energy use) - treat 0 as missing for these keys
 # so it doesn't drag an average/median toward zero.
-ZERO_AS_MISSING = {'meui', 'tedi', 'ach', 'nla', 'nlr', 'floor_area', 'design_heat_loss_per_area'}
+ZERO_AS_MISSING = {'meui', 'tedi', 'ach', 'nla', 'nlr', 'floor_area'}
 
 # GHGs are *not* taken from "ZC Total GHG Result" - that column is unreliable
 # for reports pulled from the Zero Carbon framework (it has produced values
@@ -317,15 +321,18 @@ def main():
         })
         # 'count' and every metric are weighted by Dwelling Units, to match
         # the NRCan baseline's convention of counting individual homes. For
-        # the two BLOCK_TOTAL_KEYS, the row's value is already a total across
-        # `units` homes, so only the denominator is weighted (giving the
-        # correct per-home average); every other metric is already a
-        # per-home value, so both its sum and denominator are weighted.
+        # BLOCK_TOTAL_KEYS (floor_area always, ghg conditionally - see
+        # GHG_DIVIDE_BUILDING_TYPES above), the row's value is already a
+        # total across `units` homes, so only the denominator is weighted
+        # (giving the correct per-home average); every other metric is
+        # already a per-home value, so both its sum and denominator are
+        # weighted.
         cell['count'] += units
         unit_repeats = max(1, round(units))
         for key, v in num.items():
             pair = cell['num'].setdefault(key, [0.0, 0])
-            per_home_v = v / units if key in BLOCK_TOTAL_KEYS else v
+            divide = key in BLOCK_TOTAL_KEYS or (key == 'ghg' and building_type in GHG_DIVIDE_BUILDING_TYPES)
+            per_home_v = v / units if divide else v
             pair[0] += per_home_v * units
             pair[1] += units
             # Raw per-home values (not just the sum), so the dashboard can
