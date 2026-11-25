@@ -177,7 +177,7 @@
     </ul>
     <h3>Other caveats</h3>
     <ul>
-      <li>Sample sizes are very different (roughly 124 homes here, the same count for every metric except NLR, vs. a few hundred in the main dashboard's Victoria slice) — this file's averages are far more sensitive to any single project.</li>
+      <li>Sample sizes are very different (roughly <span id="caveatHomeCount">—</span> homes here, the same count for every metric except NLR, vs. a few hundred in the main dashboard's Victoria slice) — this file's averages are far more sensitive to any single project.</li>
       <li>Only rows with <code>Report Stage = As-Built</code> are included (the handful of Pre-Construction rows have no as-built data to compare), rows with more than 2 Dwelling Units are excluded, and rows missing any metric other than NLR are excluded (see Column mapping and Row completeness above).</li>
       <li>A few municipality values in this workbook are typos of "Victoria" (e.g. "Victoira", "Vcitora") and have been normalized. Every row that passes the Report Stage/Dwelling Units filters above is included in the totals below, including the one Nanaimo and one Saanich row — if they're in this workbook, they're treated as applicable to this area rather than excluded.</li>
     </ul>
@@ -719,6 +719,7 @@
     var baseDate = BASELINE.generated_at ? BASELINE.generated_at.slice(0, 10) : 'unknown date';
     document.getElementById('subtitle').textContent =
       fmt0(aggregate(DATA.cells).count) + ' as-built homes from "' + DATA.source_file + '" compared against the main NRCan-based dashboard\'s Victoria homes, matched to the same years.';
+    document.getElementById('caveatHomeCount').textContent = fmt0(aggregate(DATA.cells).count);
     document.getElementById('metaNote').textContent =
       'This spreadsheet extracted ' + genDate + '. Main dashboard data (' + (BASELINE.source_file || 'NRCan workbook') + ') baseline computed ' + baseDate + '.';
     document.getElementById('footerSource').textContent = DATA.source_file;
