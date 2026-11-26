@@ -79,15 +79,6 @@ NUMERIC_FIELDS = {
 # so it doesn't drag an average/median toward zero.
 ZERO_AS_MISSING = {'meui', 'tedi', 'ach', 'nla', 'nlr', 'floor_area'}
 
-# Conditioned Floor Area (m2) also has its own distinct placeholder: 22 of
-# this workbook's 134 Victoria as-built rows (across many different
-# addresses and building types, none of them otherwise anywhere near this
-# value) record exactly 2 m2 - physically impossible for a home, clearly a
-# default/placeholder left behind wherever the real floor area couldn't be
-# extracted from the source PDF. Left in, it drags floor area down hard.
-# Treated as missing here, like 0 above.
-FLOOR_AREA_PLACEHOLDER = 2
-
 # NLA@10Pa As-Built has one row (1264/1266 Denman St) recorded as 42.27 -
 # over 13x the next-highest value in the whole workbook (3.16), with every
 # other value clustered under 3. Almost certainly a transcription/decimal
@@ -284,8 +275,6 @@ def main():
             if fv is None:
                 continue
             if fv == 0 and key in ZERO_AS_MISSING:
-                continue
-            if key == 'floor_area' and fv == FLOOR_AREA_PLACEHOLDER:
                 continue
             if key == 'nla' and fv > NLA_PLAUSIBILITY_CEILING:
                 continue
