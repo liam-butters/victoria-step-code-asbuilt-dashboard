@@ -39,6 +39,13 @@ BUILDING_TYPE_FIELD = 'Building Type'
 # Low-Rise MURB/(MURB) rows and rows with no usable building type at all
 # ("Other") are excluded from the analysis entirely, per request.
 EXCLUDED_BUILDING_TYPES = {'Low-Rise MURB', 'Other'}
+# A Single Detached home with a secondary suite is recorded in the NRCan
+# dataset as one entry with Dwelling Units=2 as an attribute, not two
+# separate per-unit entries - unlike a true multi-unit block (duplex, row
+# house, multi-plex), which the NRCan dataset does record as one entry per
+# unit. So rows of these building types are always treated as a single
+# entry here, regardless of their own Dwelling Units value, to match.
+SINGLE_ENTRY_BUILDING_TYPES = {'Single Detached', 'Detached w/Secondary Suite', 'Single Detached w/Secondary Suite'}
 STEP_ACHIEVED_FIELD = 'Step As-Built'
 FLOOR_AREA_FIELD = 'Conditioned Floor Area (m2)'
 # A row can represent a whole block of identical attached units (e.g. a row
@@ -267,6 +274,8 @@ def main():
         # Default to 1 unit when Dwelling Units is blank/invalid.
         units = to_float(get(DWELLING_UNITS_FIELD))
         if not units or units < 1:
+            units = 1.0
+        if building_type in SINGLE_ENTRY_BUILDING_TYPES:
             units = 1.0
 
         num = {}
