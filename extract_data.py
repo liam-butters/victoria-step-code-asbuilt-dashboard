@@ -36,6 +36,9 @@ WANTED_REPORT_STAGE = 'As-Built'
 MUNICIPALITY_FIELD = 'Municipality / District'
 YEAR_FIELD = 'Year'
 BUILDING_TYPE_FIELD = 'Building Type'
+# Low-Rise MURB/(MURB) rows and rows with no usable building type at all
+# ("Other") are excluded from the analysis entirely, per request.
+EXCLUDED_BUILDING_TYPES = {'Low-Rise MURB', 'Other'}
 STEP_ACHIEVED_FIELD = 'Step As-Built'
 FLOOR_AREA_FIELD = 'Conditioned Floor Area (m2)'
 # A row can represent a whole block of identical attached units (e.g. a row
@@ -229,6 +232,7 @@ def main():
     total_in_sheet = 0
     total_kept = 0
     skipped_not_as_built = 0
+    skipped_excluded_building_type = 0
     skipped_incomplete = 0
     muni_counts = {}
 
@@ -250,6 +254,9 @@ def main():
         year = normalize_year(get(YEAR_FIELD))
         year_key = year if year is not None else 'Unknown'
         building_type = normalize_building_type(get(BUILDING_TYPE_FIELD))
+        if building_type in EXCLUDED_BUILDING_TYPES:
+            skipped_excluded_building_type += 1
+            continue
         step_achieved = normalize_step_achieved(get(STEP_ACHIEVED_FIELD))
         # Matches the main dashboard's two-bucket BUILDINGTYPE convention
         # ("House" vs "Multi-unit: whole building"), so the two datasets'
@@ -321,6 +328,7 @@ def main():
             hist[value] = hist.get(value, 0) + units
 
     print(f'{total_in_sheet} data rows in sheet, {skipped_not_as_built} skipped (not "{WANTED_REPORT_STAGE}" report stage), '
+          f'{skipped_excluded_building_type} skipped (excluded building type), '
           f'{skipped_incomplete} skipped (missing a metric other than NLR), {total_kept} kept')
     print('Municipalities:', dict(sorted(muni_counts.items(), key=lambda kv: -kv[1])))
 
